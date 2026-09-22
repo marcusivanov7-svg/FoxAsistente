@@ -1,0 +1,79 @@
+# ============================================================================
+#  Fox (v2) — Dependencias completas
+#  Instalación:  pip install -r requirements.txt
+# ============================================================================
+
+# --- NÚCLEO E INTELIGENCIA ARTIFICIAL -------------------------------------
+google-genai>=2.8.0
+google-generativeai
+requests
+numpy
+pillow
+
+# --- INTERFAZ GRÁFICA (PyQt6) ---------------------------------------------
+PyQt6
+
+# --- AUDIO, MICRÓFONO Y CAPTURA -------------------------------------------
+sounddevice
+opencv-python
+mss
+
+# --- AUTOMATIZACIÓN Y CONTROL DEL PC --------------------------------------
+pyautogui
+pyperclip
+pygetwindow
+psutil
+send2trash
+
+# --- WEB, BÚSQUEDA Y SCRAPING ---------------------------------------------
+beautifulsoup4
+ddgs>=9.0.0
+playwright
+
+# --- OFIMÁTICA (PPT, Word, Excel) -----------------------------------------
+python-pptx
+openpyxl
+python-docx
+
+# --- PROCESAMIENTO DE DOCUMENTOS Y ARCHIVOS --------------------------------
+pdfplumber
+PyPDF2
+pandas
+pydub
+
+# --- MULTIMEDIA ------------------------------------------------------------
+youtube-transcript-api
+
+# --- TELEGRAM, DASHBOARD Y QR ----------------------------------------------
+fastapi
+uvicorn[standard]
+cryptography
+python-multipart
+qrcode[pil]
+spotipy
+
+# --- DOMÓTICA (Tuya / Smart Life) ------------------------------------------
+tinytuya
+
+# --- LIBRERÍAS EXCLUSIVAS DE WINDOWS ---------------------------------------
+comtypes; sys_platform == "win32"
+pycaw; sys_platform == "win32"
+win10toast; sys_platform == "win32"
+pywinauto; sys_platform == "win32"
+pywin32; sys_platform == "win32"
+plyer; sys_platform == "win32"
+
+# ============================================================================
+#  OPCIONALES — descomentá según lo que uses
+# ============================================================================
+
+# --- Métricas de GPU NVIDIA (temperatura/uso en la UI) ----------------------
+# pynvml
+
+# --- Temperatura de CPU vía WMI (alternativa a pynvml) ----------------------
+# wmi; sys_platform == "win32"
+
+# --- TTS/STT local legacy (no se usan en el flujo nativo de Gemini) --------
+# edge_tts            # TTS alternativo por Edge
+# vosk                # solo si querés el paquete pip en vez de la DLL incluida
+# faster-whisper      # transcripción local (core/stt.py legacy)

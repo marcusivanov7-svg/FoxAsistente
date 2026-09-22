@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FOX ASISTANT</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpolygon fill='%23ff7a2f' points='10,6 26,20 12,26'/%3E%3Cpolygon fill='%23ff7a2f' points='54,6 38,20 52,26'/%3E%3Cpolygon fill='%23ff7a2f' points='12,22 52,22 45,44 32,56 19,44'/%3E%3Cpolygon fill='%23fff' points='25,38 39,38 32,50'/%3E%3Ccircle cx='24' cy='32' r='3' fill='%23131417'/%3E%3Ccircle cx='40' cy='32' r='3' fill='%23131417'/%3E%3C/svg%3E">
+<link href="https://cdn.jsdelivr.net/fontsource/css/inter@latest/index.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/fontsource/css/jetbrains-mono@latest/index.css" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e0f11; --bg2:#131417; --panel:#191b1e; --panel2:#22242a; --border:#2b2e33; --border2:#3a3d44;
+  --text:#e9e7e2; --muted:#a0a0a6; --faint:#6d6d74;
+  --accent:#ff7a2f; --accent-soft:rgba(255,122,47,.15); --link:#6cb2ff; --green:#3fb950;
+  --purple:#a78bfa; --blue:#58a6ff; --yellow:#e3b341; --red:#f85149;
+  --code-bg:#16181b; --msg-pad:14px; --fs:14px;
+}
+[data-theme="light"]{
+  --bg:#f7f6f3; --bg2:#efeeea; --panel:#ffffff; --panel2:#f0efeb; --border:#e0ded8; --border2:#c9c7c0;
+  --text:#25231f; --muted:#5c5a55; --faint:#8b8983; --code-bg:#f4f3ef; --link:#0969da;
+  --accent-soft:rgba(255,122,47,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px;overflow:hidden}
+button{font-family:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea,select{font-family:inherit;color:var(--text)}
+.hidden{display:none!important}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:6px;border:2px solid var(--bg)}
+::-webkit-scrollbar-track{background:transparent}
+.mono{font-family:'JetBrains Mono',monospace}
+svg.ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+/* ============ LAYOUT ============ */
+#app{display:flex;height:100vh;overflow:hidden}
+#sidebar{width:264px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:width .18s ease}
+#sidebar.collapsed{width:62px}
+#sidebar.collapsed .hc{display:none!important}
+#sidebar.collapsed .sb-head{justify-content:center}
+#sidebar.collapsed .new-session span{display:none}
+.sb-head{display:flex;align-items:center;gap:9px;padding:14px 12px 10px}
+.logo{width:28px;height:28px;border-radius:8px;background:var(--panel2);flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.logo svg{width:20px;height:20px}
+.brand{display:flex;align-items:center;gap:7px;flex:1;min-width:0}
+.brand-name{font-weight:700;letter-spacing:.4px;font-size:14.5px;white-space:nowrap}
+.badge-preview{font-size:10px;background:var(--panel2);border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:1px 6px;letter-spacing:.3px}
+.icon-btn{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--muted);flex:0 0 auto}
+.icon-btn:hover{background:var(--panel2);color:var(--text)}
+.new-session{margin:4px 10px 10px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:13px;font-weight:600;color:var(--text)}
+.new-session:hover{border-color:var(--border2);background:var(--border)}
+.ws-head{display:flex;align-items:center;gap:6px;padding:6px 12px;color:var(--muted);font-size:11.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.ws-head .sp{flex:1}
+#wsSearchWrap{padding:0 10px 6px}
+#wsSearchWrap input{width:100%;background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:5px 9px;font-size:12.5px;outline:none}
+#wsList{flex:1;overflow-y:auto;padding:2px 6px 10px}
+.ws-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:13px;color:var(--text);cursor:pointer;white-space:nowrap;overflow:hidden}
+.ws-item:hover{background:var(--panel2)}
+.ws-item .chev{transition:transform .15s;color:var(--faint)}
+.ws-item.open .chev{transform:rotate(90deg)}
+.ws-item .fname{color:var(--muted)}
+.sess-item{display:flex;align-items:center;gap:8px;padding:5px 8px 5px 30px;border-radius:7px;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sess-item:hover{background:var(--panel2);color:var(--text)}
+.sess-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.sb-foot{border-top:1px solid var(--border);padding:8px}
+.sb-foot button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--muted)}
+.sb-foot button:hover{background:var(--panel2);color:var(--text)}
+
+#main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.view{flex:1;display:flex;flex-direction:column;min-height:0}
+
+/* ============ SESSION HEADER ============ */
+.s-head{display:flex;align-items:flex-start;gap:16px;padding:14px 18px 0;border-bottom:1px solid var(--border)}
+.s-head-left{flex:1;min-width:0}
+.s-title-row{display:flex;align-items:center;gap:10px}
+.s-title-row h2{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mode-badge{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:3px 10px;white-space:nowrap}
+.tabs{display:flex;gap:4px;margin-top:10px}
+.tab{padding:7px 12px;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;font-weight:600}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--link);border-bottom-color:var(--link)}
+.s-actions{display:flex;gap:6px;padding-top:2px}
+.s-actions .icon-btn{width:32px;height:30px;border:1px solid transparent}
+.s-actions .icon-btn:hover{border-color:var(--border)}
+
+.session-body{flex:1;display:flex;min-height:0}
+.left-col{flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* ============ CHAT ============ */
+.messages{flex:1;overflow-y:auto;padding:26px 20px 10px}
+.msg-wrap{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:var(--msg-pad)}
+.msg{font-size:var(--fs);line-height:1.65}
+.msg.user{align-self:flex-end;max-width:78%}
+.msg.user .bubble{background:var(--accent-soft);border:1px solid rgba(255,122,47,.35);border-radius:12px 12px 3px 12px;padding:10px 14px;white-space:pre-wrap}
+.msg.assistant .msg-body{display:flex;flex-direction:column;gap:10px}
+.msg p strong{font-weight:700}
+.msg ul.dots{list-style:disc;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.msg code{font-family:'JetBrains Mono',monospace;font-size:.86em;background:var(--panel2);border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--text)}
+.msg hr.sep{border:0;border-top:1px solid var(--border);margin:6px 0}
+.codeblock{border:1px solid var(--border);border-radius:9px;overflow:hidden;background:var(--code-bg)}
+.cb-head{display:flex;align-items:center;justify-content:space-between;background:var(--panel2);padding:6px 12px;font-size:11.5px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+.cb-copy{font-size:11.5px;color:var(--muted);padding:2px 8px;border-radius:5px}
+.cb-copy:hover{background:var(--border);color:var(--text)}
+.codeblock pre{padding:12px 14px;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7}
+.tk-sel{color:#7ee787}.tk-prop{color:#79c0ff}.tk-val{color:#ffa657}.tk-punc{color:#8b949e}.tk-cmt{color:#6d6d74}
+[data-theme="light"] .tk-sel{color:#116329}[data-theme="light"] .tk-prop{color:#0550ae}[data-theme="light"] .tk-val{color:#953800}[data-theme="light"] .tk-punc{color:#57606a}
+.files-line{font-size:12.5px;color:var(--muted)}
+.files-line a{color:var(--link);cursor:pointer;text-decoration:none}
+.files-line a:hover{text-decoration:underline}
+.file-cards{display:flex;flex-wrap:wrap;gap:10px}
+.fcard{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 12px;min-width:250px;flex:1;max-width:340px}
+.fcard .fico{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex:0 0 auto}
+.fico.html{background:#e8833a}.fico.css{background:#3b82c4}.fico.js{background:#d4b025}
+.fcard .fmeta{flex:1;min-width:0}
+.fcard .fname2{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fcard .fdesc{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fopen{display:flex;align-items:center;gap:4px;font-size:11.5px;background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:4px 9px;color:var(--muted)}
+.fopen:hover{color:var(--text);border-color:var(--border2)}
+.msg-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:2px}
+.reactions{display:flex;gap:4px}
+.reactions .icon-btn{width:26px;height:26px}
+.reactions .icon-btn.on{color:var(--accent);background:var(--accent-soft)}
+.stat{font-size:11.5px;color:var(--faint);display:flex;align-items:center;gap:5px}
+.typing-dots{display:flex;gap:5px;padding:6px 2px}
+.typing-dots span{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:blink 1s infinite}
+.typing-dots span:nth-child(2){animation-delay:.2s}.typing-dots span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+
+/* ============ COMPOSER ============ */
+.composer-wrap{padding:8px 20px 16px}
+.composer{max-width:880px;margin:0 auto;background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:11px 12px 9px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.composer textarea{display:block;width:100%;background:transparent;border:0;resize:none;outline:none;font-size:var(--fs);line-height:1.5;min-height:22px;max-height:180px;color:var(--text)}
+.composer textarea::placeholder{color:var(--faint)}
+.c-row{display:flex;align-items:center;gap:7px;margin-top:9px}
+.spacer{flex:1}
+.pill{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--text);white-space:nowrap}
+.pill:hover{border-color:var(--border2)}
+.pill.on{border-color:var(--accent);color:var(--accent)}
+.send{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#20100a;display:flex;align-items:center;justify-content:center;flex:0 0 auto;transition:transform .12s}
+.send:hover{transform:scale(1.07)}
+.send svg{width:15px;height:15px}
+
+/* ============ TRAJECTORY ============ */
+.pane-traj{flex:1;overflow-y:auto;padding:14px 18px 30px}
+.traj-controls{display:flex;align-items:center;gap:16px;max-width:1100px;margin:0 auto 12px;font-size:12.5px;color:var(--muted)}
+.traj-controls label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.traj-controls input[type=checkbox]{accent-color:var(--accent);width:13px;height:13px}
+.traj-search{margin-left:auto;display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:5px 10px;width:220px}
+.traj-search input{background:none;border:0;outline:none;font-size:12.5px;width:100%}
+.tl{max-width:1100px;margin:0 auto 18px;display:flex;flex-direction:column;gap:5px}
+.tl-row{display:flex;gap:2px;height:9px}
+.tl-row.idle{height:4px}
+.tl-seg{border-radius:2px;min-width:3px}
+.traj-list{max-width:1100px;margin:0 auto;display:flex;flex-direction:column}
+.traj-entry{display:flex;gap:10px;padding:5px 4px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:11.3px;line-height:1.55}
+.traj-entry:hover{background:var(--panel)}
+.te-time{color:var(--faint);flex:0 0 44px;text-align:right;padding-top:2px}
+.te-badge{flex:0 0 74px;text-align:center;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:.5px;height:17px;line-height:17px;margin-top:1px}
+.te-badge.TOOL{background:rgba(167,139,250,.16);color:var(--purple)}
+.te-badge.ASSISTANT{background:rgba(160,160,170,.16);color:var(--muted)}
+.te-badge.USER{background:rgba(88,166,255,.16);color:var(--blue)}
+.te-text{flex:1;min-width:0;color:var(--text);word-break:break-word;white-space:pre-wrap}
+.te-text em{color:var(--muted)}
+
+/* ============ FILES PANE ============ */
+.pane-files{width:330px;flex:0 0 auto;border-left:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;min-height:0}
+.pf-tabs{display:flex;align-items:center;gap:6px;padding:9px 10px;border-bottom:1px solid var(--border)}
+.pf-tab{display:flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:4px 9px;font-size:12px}
+.pf-tab .x{color:var(--faint);cursor:pointer}
+.pf-tab .x:hover{color:var(--text)}
+.pf-path{padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf-tree{flex:1;overflow-y:auto;padding:8px 6px;font-size:12.5px}
+.tree-li{list-style:none}
+.tree-row{display:flex;align-items:center;gap:7px;padding:4px 8px;border-radius:6px;cursor:pointer;color:var(--text);white-space:nowrap}
+.tree-row:hover{background:var(--panel2)}
+.tree-row .tw{width:14px;color:var(--faint);display:flex;transition:transform .13s}
+.tree-li.open>.tree-row .tw{transform:rotate(90deg)}
+.tree-row .fic{color:var(--yellow)}
+.tree-row .fic.file{color:var(--muted)}
+.tree-children{display:none;padding-left:18px}
+.tree-li.open>.tree-children{display:block}
+
+/* ============ NEW SESSION VIEW ============ */
+#viewNew{align-items:center;justify-content:flex-start;padding-top:16vh;overflow-y:auto}
+.hero{display:flex;align-items:center;gap:13px;margin-bottom:22px}
+.hero .logo{width:44px;height:44px;border-radius:12px}
+.hero .logo svg{width:30px;height:30px}
+.hero h1{font-size:27px;font-weight:800;letter-spacing:.2px}
+.hero .badge-preview{font-size:11px;padding:2px 9px}
+.ns-controls{display:flex;gap:10px;margin-bottom:12px}
+#viewNew .composer{width:min(660px,92vw)}
+#viewNew .composer-wrap{padding:0}
+
+/* ============ MENUS ============ */
+.menu{position:fixed;z-index:70;display:none;background:var(--panel);border:1px solid var(--border);border-radius:11px;box-shadow:0 14px 40px rgba(0,0,0,.5);padding:6px;min-width:190px;max-height:320px;overflow-y:auto}
+.menu.open{display:block}
+.menu li{list-style:none;display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:7px;font-size:12.8px;cursor:pointer;color:var(--text)}
+.menu li:hover{background:var(--panel2)}
+.menu li .chk{margin-left:auto;color:var(--accent)}
+.menu li.sep-li{border-top:1px solid var(--border);border-radius:0;padding:0;margin:4px 6px;pointer-events:none}
+.menu li .mi{color:var(--muted);display:flex}
+
+/* ============ MODALS ============ */
+.overlay{position:fixed;inset:0;background:rgba(5,5,8,.6);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:90}
+.overlay.open{display:flex}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:14px;width:min(740px,94vw);max-height:86vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border)}
+.modal-head h3{font-size:15px;font-weight:700}
+.set-body{display:flex;flex:1;min-height:440px}
+.set-nav{width:180px;flex:0 0 auto;border-right:1px solid var(--border);padding:12px 10px;display:flex;flex-direction:column;gap:3px}
+.set-nav button{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:8px;font-size:13px;color:var(--muted);text-align:left}
+.set-nav button:hover{background:var(--panel2);color:var(--text)}
+.set-nav button.active{background:var(--panel2);color:var(--text);font-weight:600}
+.set-content{flex:1;overflow-y:auto;padding:20px 24px}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 0;border-bottom:1px solid var(--border)}
+.set-row:last-child{border-bottom:0}
+.set-row .lbl{font-size:13px;font-weight:600}
+.set-row .sub{font-size:11.5px;color:var(--muted);margin-top:3px}
+.sel{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12.5px;outline:none}
+.theme-cards{display:flex;gap:10px;padding:8px 0}
+.theme-card{flex:1;border:1px solid var(--border);border-radius:10px;padding:16px 10px;display:flex;flex-direction:column;align-items:center;gap:9px;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.theme-card:hover{border-color:var(--border2)}
+.theme-card.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);color:var(--text)}
+.theme-card .prev{width:100%;height:34px;border-radius:6px;border:1px solid var(--border)}
+.prev.dk{background:#17181b}.prev.lt{background:#faf9f6}.prev.sy{background:linear-gradient(90deg,#faf9f6 50%,#17181b 50%)}
+.prov-row{border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:10px}
+.prov-top{display:flex;align-items:center;gap:9px}
+.prov-top .nm{font-size:13px;font-weight:700}
+.dot-g{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.prov-top .sp{flex:1}
+.btn-sm{font-size:11.5px;background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:4px 11px;color:var(--muted)}
+.btn-sm:hover{color:var(--text);border-color:var(--border2)}
+.btn-sm.danger{color:var(--red)}
+.prov-edit{display:none;margin-top:10px;gap:8px}
+.prov-row.editing .prov-edit{display:flex}
+.prov-edit input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12px;outline:none;font-family:'JetBrains Mono',monospace}
+.add-row{display:flex;gap:10px;margin-top:12px}
+.add-btn{flex:1;border:1px dashed var(--border2);border-radius:9px;padding:9px;font-size:12.5px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:7px}
+.add-btn:hover{color:var(--text);border-color:var(--accent)}
+.plug-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.plug-row .nm{font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.plug-row .ds{font-size:11.5px;color:var(--muted)}
+.sw{position:relative;width:36px;height:20px;flex:0 0 auto;margin-left:auto}
+.sw input{opacity:0;width:0;height:0}
+.sw .sl{position:absolute;inset:0;background:var(--panel2);border:1px solid var(--border2);border-radius:20px;transition:.15s}
+.sw .sl:before{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:var(--muted);top:2px;left:3px;transition:.15s}
+.sw input:checked+.sl{background:var(--accent-soft);border-color:var(--accent)}
+.sw input:checked+.sl:before{background:var(--accent);transform:translateX(15px)}
+.preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.preset-card{border:1px solid var(--border);border-radius:11px;padding:13px 14px;display:flex;flex-direction:column;gap:9px}
+.preset-card .ph{display:flex;align-items:center;gap:8px}
+.preset-card .ph .nm{font-size:13px;font-weight:700}
+.preset-card .ph .bi{font-size:9.5px;background:var(--panel2);border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--muted)}
+.preset-card .ph .df{margin-left:auto;font-size:9.5px;background:var(--accent-soft);color:var(--accent);border-radius:5px;padding:2px 8px;font-weight:700}
+.preset-card .pd{font-size:11.8px;color:var(--muted);line-height:1.55;flex:1}
+.preset-card .pt{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--faint)}
+.preset-card .pa{display:flex;gap:6px;justify-content:flex-end}
+.sec-lbl{font-size:10.5px;letter-spacing:.6px;color:var(--faint);font-weight:700;margin:16px 0 8px;text-transform:uppercase}
+
+/* directory modal */
+.dir-modal{width:min(780px,94vw)}
+.dir-head{background:linear-gradient(90deg,#8d2f3d,#a33a44);padding:9px 14px;display:flex;align-items:center;justify-content:space-between;color:#fff}
+.dir-head h4{font-size:12.5px;font-weight:600}
+.dir-head .x{color:#ffd9dd;font-size:15px;width:22px;height:22px;border-radius:5px}
+.dir-head .x:hover{background:rgba(255,255,255,.15)}
+.dir-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border)}
+.dir-bar .navb{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.dir-bar .navb:hover{background:var(--panel2)}
+.dir-crumb{flex:1;display:flex;align-items:center;gap:6px;font-size:12.5px;background:var(--panel2);border:1px solid var(--border);border-radius:7px;padding:5px 10px;overflow:hidden;white-space:nowrap}
+.dir-body{display:flex;flex:1;min-height:300px}
+.dir-left{width:190px;flex:0 0 auto;border-right:1px solid var(--border);padding:8px;overflow-y:auto;font-size:12.5px}
+.dir-left .dn{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;color:var(--muted)}
+.dir-left .dn:hover{background:var(--panel2)}
+.dir-left .dn.sel{background:var(--accent-soft);color:var(--accent)}
+.dir-left .grp{font-size:10.5px;color:var(--faint);padding:8px 8px 3px;letter-spacing:.5px}
+.dir-right{flex:1;overflow-y:auto;padding:6px 8px}
+.dir-col{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--border)}
+.dir-row{display:flex;align-items:center;gap:9px;padding:6px 10px;font-size:12.3px;border-radius:6px;cursor:pointer}
+.dir-row:hover{background:var(--panel2)}
+.dir-row .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dir-row .dt,.dir-row .ty{color:var(--muted);font-size:11.3px;flex:0 0 130px}
+.dir-row .dt{flex:0 0 110px}
+.dir-empty{padding:30px;text-align:center;color:var(--faint);font-size:12.5px}
+.dir-foot{display:flex;align-items:center;gap:10px;padding:11px 14px;border-top:1px solid var(--border);font-size:12.5px}
+.dir-foot input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12.5px;outline:none}
+.btn{background:var(--panel2);border:1px solid var(--border2);border-radius:8px;padding:6px 15px;font-size:12.5px;font-weight:600}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.ghost{border-color:var(--border);color:var(--muted);font-weight:500}
+
+/* toasts */
+#toasts{position:fixed;top:14px;right:14px;z-index:120;display:flex;flex-direction:column;gap:9px}
+.toast{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:10px 15px;font-size:12.8px;box-shadow:0 12px 34px rgba(0,0,0,.45);animation:tin .22s ease;max-width:340px}
+.toast .tl2{width:26px;height:26px;border-radius:7px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+@keyframes tin{from{transform:translateX(20px);opacity:0}to{transform:none;opacity:1}}
+.toast.out{opacity:0;transform:translateX(20px);transition:.25s}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside id="sidebar">
+    <div class="sb-head">
+      <span class="logo" id="logoFox"></span>
+      <span class="brand hc"><span class="brand-name">FOX ASISTANT</span><span class="badge-preview">preview</span></span>
+      <button class="icon-btn" id="btnCollapse" title="Contraer panel"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg></button>
+    </div>
+    <button class="new-session" id="btnNewSession"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg><span class="hc" data-i18n="new">Nueva sesión</span></button>
+    <div class="ws-head"><span class="hc" id="wsHeadLabel" data-i18n="ws">Workspaces</span><span class="sp"></span>
+      <button class="icon-btn" id="btnWsSearch" title="Buscar workspace"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></button>
+      <button class="icon-btn" id="btnWsAdd" title="Añadir workspace"><svg class="ic" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></button>
+    </div>
+    <div id="wsSearchWrap" class="hidden"><input id="wsSearchInput" data-i18n-ph="searchph" placeholder="Buscar workspace..."></div>
+    <ul id="wsList"></ul>
+    <div class="sb-foot"><button id="btnSettings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v0a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg><span class="hc" data-i18n="set">Ajustes</span></button></div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main id="main">
+    <!-- ===== SESSION VIEW ===== -->
+    <section class="view" id="viewSession">
+      <header class="s-head">
+        <div class="s-head-left">
+          <div class="s-title-row">
+            <h2 id="sessionTitle">Actúa como un Arquitecto de</h2>
+            <span class="mode-badge"><svg class="ic" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7z"/></svg><span id="modeBadge">Standard mode</span></span>
+          </div>
+          <nav class="tabs">
+            <button class="tab active" id="tabChat" data-i18n="chat">Chat</button>
+            <button class="tab" id="tabTraj" data-i18n="traj">Trayectoria</button>
+          </nav>
+        </div>
+        <div class="s-actions">
+          <button class="icon-btn" id="btnEnv" title="Entorno"><svg class="ic" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#e3b341" stroke="#b98d1f"/></svg><svg class="ic" style="width:11px;height:11px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+          <button class="icon-btn" id="btnDownload" title="Descargar registro de sesión"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M4 19h16"/></svg></button>
+          <button class="icon-btn" id="btnSplit" title="Panel de archivos"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="14" y1="4" x2="14" y2="20"/></svg></button>
+        </div>
+      </header>
+      <div class="session-body">
+        <div class="left-col">
+          <!-- CHAT -->
+          <div class="messages" id="msgScroll"><div class="msg-wrap" id="msgList"></div></div>
+          <div class="composer-wrap">
+            <div class="composer" id="compSession">
+              <textarea rows="1" data-i18n-ph="ph" placeholder="Escribe un mensaje o ejecuta una tarea, / comandos, @ archivos o sesiones"></textarea>
+              <div class="c-row">
+                <!-- ARCHIVOS ADJUNTOS -->
+                <input type="file" id="fileInput" multiple hidden>
+                <button class="icon-btn c-plus" title="Añadir adjunto" onclick="document.getElementById('fileInput').click();"><svg class="ic" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                <button class="icon-btn c-globe" title="Búsqueda web"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg></button>
+                <button class="pill c-perm"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7z"/></svg><span class="c-perm-lbl">Full access</span><svg class="ic" style="width:11px;height:11px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <span class="spacer"></span>
+                <button class="pill c-model"><span class="c-model-lbl">Fox V4 Pro · High</span><svg class="ic" style="width:11px;height:11px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <button class="send" title="Enviar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="6 12 12 6 18 12"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <!-- TRAJECTORY -->
+          <div class="pane-traj hidden" id="paneTraj">
+            <div class="traj-controls">
+              <label><input type="checkbox" id="ckDur" checked> Duración</label>
+              <label><input type="checkbox" id="ckTurns" checked> Turnos</label>
+              <label><input type="checkbox" id="ckIdle" checked> Inactivo</label>
+              <div class="traj-search"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg><input id="trajSearch" data-i18n-ph="trajsearch" placeholder="Buscar en la trayectoria"></div>
+            </div>
+            <div class="tl" id="timeline"></div>
+            <div class="traj-list" id="trajList"></div>
+          </div>
+        </div>
+        <!-- FILES PANE -->
+        <aside class="pane-files hidden" id="paneFiles">
+          <div class="pf-tabs">
+            <span class="pf-tab"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#e3b341" stroke="#b98d1f"/></svg> Files <span class="x" id="pfClose">✕</span></span>
+            <button class="icon-btn" style="width:22px;height:22px"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+          </div>
+          <div class="pf-path">C:\Users\Matias Lopez\Desktop\fox_asistente_v3</div>
+          <ul class="pf-tree" id="pfTree"></ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ===== NEW SESSION VIEW ===== -->
+    <section class="view hidden" id="viewNew">
+      <div class="hero"><span class="logo" id="logoFox2"></span><h1>Into the Unknown</h1><span class="badge-preview">Preview</span></div>
+      <div class="ns-controls">
+        <button class="pill" id="btnNsWs"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="nsWsName">fox_asistente_v3</span><svg class="ic" style="width:11px;height:11px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <button class="pill" id="btnNsMode"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7z"/></svg><span id="nsModeName">Standard mode</span><svg class="ic" style="width:11px;height:11px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+      </div>
+      <div class="composer-wrap">
+        <div class="composer" id="compNew">
+          <textarea rows="1" data-i18n-ph="ph" placeholder="Escribe un mensaje o ejecuta una tarea, / comandos, @ archivos o sesiones"></textarea>
+          <div class="c-row">
+            <button class="icon-btn c-plus" title="Añadir adjunto" onclick="document.getElementById('fileInput').click();"><svg class="ic" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            <button class="icon-btn c-globe" title="Búsqueda web"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg></button>
+            <button class="pill c-perm"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7z"/></svg><span class="c-perm-lbl">Full access</span><svg class="ic" style="width:11px;height:11px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <span class="spacer"></span>
+            <button class="pill c-model"><span class="c-model-lbl">Fox V4 Pro · High</span><svg class="ic" style="width:11px;height:11px" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <button class="send" title="Enviar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="6 12 12 6 18 12"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================= MENUS ================= -->
+<ul class="menu" id="menuEnv">
+  <li data-val="explorer"><span class="mi"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#e3b341" stroke="#b98d1f"/></svg></span>Explorador de archivos</li>
+  <li data-val="vscode"><span class="mi"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M4 8l8-5 8 5v8l-8 5-8-5z" stroke="#58a6ff"/></svg></span>VS Code</li>
+  <li data-val="bash"><span class="mi"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke="#e3b341"/><polyline points="7 9 10 12 7 15" stroke="#e3b341"/><line x1="12" y1="15" x2="17" y2="15" stroke="#e3b341"/></svg></span>Git Bash</li>
+</ul>
+<ul class="menu" id="menuPerm">
+  <li data-val="Full access">Full access</li>
+  <li data-val="Workspace Write">Workspace Write</li>
+  <li data-val="Solo lectura">Solo lectura</li>
+</ul>
+<ul class="menu" id="menuModel">
+  <li data-val="Fox V4 Pro · High">Fox V4 Pro · High</li>
+  <li data-val="Fox V4 Pro · Max">Fox V4 Pro · Max</li>
+  <li data-val="Fox V4 Flash · Low">Fox V4 Flash · Low</li>
+</ul>
+<ul class="menu" id="menuMode">
+  <li data-val="Standard mode">Standard mode</li>
+  <li data-val="PTC mode">PTC mode</li>
+  <li data-val="Minimal mode">Minimal mode</li>
+  <li data-val="Creator mode">Creator mode</li>
+</ul>
+<ul class="menu" id="menuWs"></ul>
+<ul class="menu" id="menuOpen">
+  <li data-val="open">Abrir</li>
+  <li data-val="vs">Abrir con VS Code</li>
+  <li data-val="path">Copiar ruta</li>
+</ul>
+
+<!-- ================= SETTINGS MODAL ================= -->
+<div class="overlay" id="ovSettings">
+  <div class="modal">
+    <div class="modal-head"><h3>Ajustes</h3>
+      <span style="display:flex;gap:8px;align-items:center">
+        <button class="btn-sm" id="btnOpenCfg">Abrir archivo de configuración</button>
+        <button class="icon-btn" data-close="ovSettings"><svg class="ic" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+      </span>
+    </div>
+    <div class="set-body">
+      <nav class="set-nav">
+        <button class="active" data-set="general"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>General</button>
+        <button data-set="models"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="6" rx="2"/><rect x="3" y="13" width="18" height="6" rx="2"/></svg>Modelos</button>
+        <button data-set="plugins"><svg class="ic" viewBox="0 0 24 24"><path d="M9 3v4M15 3v4M6 7h12v4a6 6 0 0 1-12 0z"/><path d="M12 17v4"/></svg>Plugins</button>
+        <button data-set="presets"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7z"/></svg>Presets de agente</button>
+      </nav>
+      <div class="set-content">
+        <!-- GENERAL -->
+        <div class="set-pane" id="set-general">
+          <div class="set-row"><div><div class="lbl">Permisos</div><div class="sub">Modo de permisos por defecto para sesiones nuevas</div></div>
+            <select class="sel" id="setPerm"><option>Workspace Write</option><option selected>Full access</option><option>Solo lectura</option></select></div>
+          <div class="set-row"><div><div class="lbl">Idioma</div></div>
+            <select class="sel" id="setLang"><option value="es" selected>Español</option><option value="en">English</option></select></div>
+          <div class="set-row" style="display:block"><div class="lbl" style="margin-bottom:6px">Apariencia</div>
+            <div class="theme-cards">
+              <div class="theme-card" data-th="light"><div class="prev lt"></div><svg class="ic" style="width:15px;height:15px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>Claro</div>
+              <div class="theme-card sel" data-th="dark"><div class="prev dk"></div><svg class="ic" style="width:15px;height:15px" viewBox="0 0 24 24"><path d="M20 14A8 8 0 1 1 10 4a7 7 0 0 0 10 10z"/></svg>Oscuro</div>
+              <div class="theme-card" data-th="system"><div class="prev sy"></div><svg class="ic" style="width:15px;height:15px" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/></svg>Sistema</div>
+            </div></div>
+          <div class="set-row"><div><div class="lbl">Tamaño de fuente</div><div class="sub">Solo afecta al contenido de la conversación</div></div>
+            <span style="display:flex;gap:6px;align-items:center"><input class="sel" id="setFont" type="number" min="12" max="18" value="14" style="width:64px"> px</span></div>
+          <div class="set-row"><div><div class="lbl">Visualización de conversación</div><div class="sub">Controla la densidad del contenido en turnos completados</div></div>
+            <select class="sel" id="setConv"><option value="compact" selected>Compacta</option><option value="comfortable">Cómoda</option></select></div>
+          <div class="set-row"><div><div class="lbl">Envío mientras el agente está ocupado</div><div class="sub">Ctrl/Cmd+Enter usa el comportamiento contrario</div></div>
+            <select class="sel" id="setBusy"><option selected>En cola</option><option>Interrumpir</option></select></div>
+        </div>
+        <!-- MODELS -->
+        <div class="set-pane hidden" id="set-models">
+          <div class="lbl" style="font-size:14px;font-weight:700;margin-bottom:4px">Modelos</div>
+          <div class="sub" style="font-size:12px;color:var(--muted);margin-bottom:14px">Introduce tus API keys para usar modelos de los siguientes proveedores.</div>
+          <div id="provList">
+            <div class="prov-row"><div class="prov-top"><span class="nm">FoxAI</span><span class="dot-g"></span><span class="sp"></span><button class="btn-sm p-edit">Editar</button></div>
+              <div class="prov-edit"><input type="password" id="api_key_foxai" placeholder="fk-••••••••••••••••"><button class="btn-sm p-save">Guardar</button></div></div>
+            <div class="prov-row"><div class="prov-top"><span class="nm">OpenAI</span><span class="dot-g"></span><span class="sp"></span><button class="btn-sm p-edit">Editar</button></div>
+              <div class="prov-edit"><input type="password" id="api_key_openai" placeholder="sk-••••••••••••••••"><button class="btn-sm p-save">Guardar</button></div></div>
+          </div>
+          <div class="add-row">
+            <button class="add-btn" id="btnAddProv"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Añadir proveedor</button>
+            <button class="add-btn" id="btnAddCustom"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Añadir proveedor personalizado</button>
+          </div>
+        </div>
+        <!-- PLUGINS -->
+        <div class="set-pane hidden" id="set-plugins">
+          <div class="lbl" style="font-size:14px;font-weight:700;margin-bottom:8px">Plugins</div>
+          <div class="plug-row"><div><div class="nm">browser-tools</div><div class="ds">Navegación y capturas de pantalla para el agente</div></div><label class="sw"><input type="checkbox" checked data-plug="browser-tools"><span class="sl"></span></label></div>
+          <div class="plug-row"><div><div class="nm">pdf-reader</div><div class="ds">Lectura y resumen de documentos PDF</div></div><label class="sw"><input type="checkbox" data-plug="pdf-reader"><span class="sl"></span></label></div>
+          <div class="plug-row"><div><div class="nm">git-tools</div><div class="ds">Operaciones de repositorio: commit, diff, branch</div></div><label class="sw"><input type="checkbox" checked data-plug="git-tools"><span class="sl"></span></label></div>
+          <div class="plug-row"><div><div class="nm">voice-input</div><div class="ds">Dictado por voz en el compositor</div></div><label class="sw"><input type="checkbox" data-plug="voice-input"><span class="sl"></span></label></div>
+        </div>
+        <!-- PRESETS -->
+        <div class="set-pane hidden" id="set-presets">
+          <div class="lbl" style="font-size:14px;font-weight:700">Presets de agente</div>
+          <div class="sub" style="font-size:12px;color:var(--muted);margin:4px 0 6px">Un preset es la configuración lista para usar de una sesión: herramientas, prompt y capacidades. Duplica uno existente y modifícalo, o deja que el agente lo bocete por ti en Creator mode.</div>
+          <div class="sec-lbl">Integrados</div>
+          <div class="preset-grid" id="presetGrid">
+            <div class="preset-card"><div class="ph"><span class="nm">Standard mode</span><span class="bi">Built-in</span><span class="df">Default</span></div><div class="pd">Agente de coding completo: edición de archivos, shell, búsqueda web, skills, planificación, goals, subagentes y workflows.</div><div class="pt">standard</div><div class="pa"><button class="icon-btn p-copy" title="Duplicar"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><button class="icon-btn p-ren" title="Renombrar"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button></div></div>
+            <div class="preset-card"><div class="ph"><span class="nm">PTC mode</span><span class="bi">Built-in</span></div><div class="pd">Agente de coding completo sin la herramienta workflow; el resto de herramientas se exponen mediante el modo PTC: SDK en la que el modelo combina operaciones multi-paso en una sola llamada.</div><div class="pt">ptc</div><div class="pa"><button class="icon-btn p-copy" title="Duplicar"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><button class="icon-btn p-ren" title="Renombrar"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button></div></div>
+            <div class="preset-card"><div class="ph"><span class="nm">Minimal mode</span><span class="bi">Built-in</span></div><div class="pd">Agente de coding de una sola herramienta con shell persistente.</div><div class="pt">minimal</div><div class="pa"><button class="icon-btn p-copy" title="Duplicar"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><button class="icon-btn p-ren" title="Renombrar"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button></div></div>
+            <div class="preset-card"><div class="ph"><span class="nm">Creator mode</span><span class="bi">Built-in</span></div><div class="pd">Creado para construir presets de agente personalizados, con todas las capacidades de Standard más inspección de modelos, plugins y guía de authoring de presets.</div><div class="pt">creator</div><div class="pa"><button class="icon-btn p-copy" title="Duplicar"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><button class="icon-btn p-ren" title="Renombrar"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button></div></div>
+          </div>
+          <div class="sec-lbl">Personalizados</div>
+          <div class="preset-grid" id="presetCustom"></div>
+          <button class="add-btn" style="margin-top:12px" id="btnDraft"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Bocetar un preset personalizado con Creator mode</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= DIRECTORY MODAL ================= -->
+<div class="overlay" id="ovDir">
+  <div class="modal dir-modal">
+    <div class="dir-head"><h4>Seleccionar directorio del workspace</h4><button class="x" data-close="ovDir">✕</button></div>
+    <div class="dir-bar">
+      <button class="navb" id="dirBack"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><polyline points="15 6 9 12 15 18"/></button>
+      <button class="navb" id="dirFwd"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></button>
+      <button class="navb" id="dirUp"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><polyline points="6 15 12 9 18 15"/></button>
+      <div class="dir-crumb" id="dirCrumb"></div>
+    </div>
+    <div class="dir-body">
+      <div class="dir-left" id="dirLeft"></div>
+      <div class="dir-right" id="dirRight"></div>
+    </div>
+    <div class="dir-foot"><span>Carpeta:</span><input id="dirInput"><button class="btn" id="dirSelect">Seleccionar carpeta</button><button class="btn ghost" data-close="ovDir">Cancelar</button></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* =================== HELPERS =================== */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const FOX_SVG='<svg viewBox="0 0 64 64"><polygon fill="#ff7a2f" points="10,6 26,20 12,26"/><polygon fill="#ff7a2f" points="54,6 38,20 52,26"/><polygon fill="#ff7a2f" points="12,22 52,22 45,44 32,56 19,44"/><polygon fill="#fff" points="25,38 39,38 32,50"/><circle cx="24" cy="32" r="3" fill="#131417"/><circle cx="40" cy="32" r="3" fill="#131417"/></svg>';
+$('#logoFox').innerHTML=FOX_SVG; $('#logoFox2').innerHTML=FOX_SVG;
+function toast(msg,icon){const t=document.createElement('div');t.className='toast';t.innerHTML='<span class="tl2">'+(icon||'🦊')+'</span><span>'+msg+'</span>';$('#toasts').appendChild(t);setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),260)},2800);}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function mdLite(txt){const lines=esc(txt).split('\n');let out='',list=[];const flush=()=>{if(list.length){out+='<ul class="dots">'+list.map(l=>'<li>'+l+'</li>').join('')+'</ul>';list=[]}};
+for(let ln of lines){const b=ln.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');if(ln.startsWith('- ')){list.push(b.slice(2))}else{flush();if(ln.trim())out+='<p>'+b+'</p>'}}flush();return out}
+const nowT=()=>{const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
+
+/* =================== I18N =================== */
+const I18N={es:{new:'Nueva sesión',ws:'Workspaces',set:'Ajustes',chat:'Chat',traj:'Trayectoria',ph:'Escribe un mensaje o ejecuta una tarea, / comandos, @ archivos o sesiones',searchph:'Buscar workspace...',trajsearch:'Buscar en la trayectoria'},
+en:{new:'New Session',ws:'Workspaces',set:'Settings',chat:'Chat',traj:'Trajectory',ph:'Message or run a task, / commands, @ files or sessions',searchph:'Search workspace...',trajsearch:'Search trajectory'}};
+function applyI18n(){const d=I18N[state.lang];$$('[data-i18n]').forEach(el=>{el.textContent=d[el.dataset.i18n]});$$('[data-i18n-ph]').forEach(el=>{el.placeholder=d[el.dataset.i18nPh]})}
+
+/* =================== STATE =================== */
+let state={lang:'es',perm:'Full access',model:'Fox V4 Pro · High',mode:'Standard mode',nsWs:null,view:'session',cur:null,expanded:{},ws:[],folders:[]};
+const sessions={};
+let sessSeq = 1;
+
+/* Load state from localStorage */
+try {
+  const savedState = localStorage.getItem('fox_state');
+  if (savedState) {
+    const s = JSON.parse(savedState);
+    state.lang = s.lang || state.lang;
+    state.perm = s.perm || state.perm;
+    state.model = s.model || state.model;
+    state.mode = s.mode || state.mode;
+  }
+} catch(e) {}
+function saveState() {
+  localStorage.setItem('fox_state', JSON.stringify({
+    lang: state.lang,
+    perm: state.perm,
+    model: state.model,
+    mode: state.mode
+  }));
+}
+
+/* =================== SIDEBAR =================== */
+function renderSidebar(filter){
+  const ul=$('#wsList'); ul.innerHTML='';
+  state.ws.forEach(w=>{
+    if(filter && !w.name.toLowerCase().includes(filter.toLowerCase())) return;
+    const li=document.createElement('li'); li.className='ws-item'+(state.expanded[w.id]?' open':''); li.dataset.ws=w.id; li.title=w.name;
+    li.innerHTML='<span class="chev"><svg class="ic" style="width:11px;height:11px" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></span><span class="fname"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="ws-name hc" style="overflow:hidden;text-overflow:ellipsis">'+esc(w.name)+'</span>';
+    ul.appendChild(li);
+    if(state.expanded[w.id]){
+      w.sessions.forEach(s=>{
+        const si=document.createElement('li'); si.className='sess-item'+(state.cur===s.id&&state.view==='session'?' active':''); si.dataset.sess=s.id; si.title=s.title;
+        si.innerHTML='<svg class="ic" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><span style="overflow:hidden;text-overflow:ellipsis">'+esc(s.title)+'</span>';
+        ul.appendChild(si);
+      });
+    }
+  });
+}
+$('#wsList').addEventListener('click',e=>{
+  const si=e.target.closest('.sess-item');
+  if(si){openSession(si.dataset.sess);return}
+  const wi=e.target.closest('.ws-item');
+  if(wi){const id=wi.dataset.ws; state.expanded[id]=!state.expanded[id]; state.nsWs=id; $('#nsWsName').textContent=(state.ws.find(w=>w.id===id)||{}).name||''; renderSidebar($('#wsSearchInput').value);}
+});
+$('#btnWsSearch').onclick=()=>{const w=$('#wsSearchWrap');w.classList.toggle('hidden');if(!w.classList.contains('hidden'))$('#wsSearchInput').focus()};
+$('#wsSearchInput').oninput=e=>renderSidebar(e.target.value);
+$('#btnWsAdd').onclick=()=>openDir();
+$('#btnCollapse').onclick=()=>$('#sidebar').classList.toggle('collapsed');
+
+/* =================== VIEWS / SESSIONS =================== */
+function showView(v){state.view=v;$('#viewSession').classList.toggle('hidden',v!=='session');$('#viewNew').classList.toggle('hidden',v!=='new');renderSidebar($('#wsSearchInput').value);}
+$('#btnNewSession').onclick=()=>{
+  showView('new');
+  if(!state.nsWs && state.ws.length > 0) {
+    state.nsWs = state.ws[0].id;
+    $('#nsWsName').textContent = state.ws[0].name;
+  }
+  $('#compNew textarea').focus();
+};
+function findSess(id){for(const w of state.ws){const s=w.sessions.find(x=>x.id===id);if(s)return{w,s}}return null}
+function openSession(id, skipLoad = false){
+  saveCurChat();
+  state.cur=id; const f=findSess(id); if(!f)return;
+  if(!sessions[id])sessions[id]={traj:[],stats:['Usage 0 tok','Ran for 0s',nowT()],html:''};
+  $('#sessionTitle').textContent=f.s.title; $('#modeBadge').textContent=f.s.mode;
+  $('#msgList').innerHTML=sessions[id].html||'';
+  renderTraj(); showView('session'); switchTab('chat');
+  $('#msgScroll').scrollTop=$('#msgScroll').scrollHeight;
+  if (!skipLoad && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({action: 'load', session_id: id}));
+  }
+}
+function saveCurChat(){if(state.cur&&sessions[state.cur])sessions[state.cur].html=$('#msgList').innerHTML}
+function switchTab(t){
+  $('#tabChat').classList.toggle('active',t==='chat'); $('#tabTraj').classList.toggle('active',t==='traj');
+  $('#msgScroll').classList.toggle('hidden',t!=='chat'); $('#msgScroll').nextElementSibling.classList.toggle('hidden',t!=='chat');
+  $('#paneTraj').classList.toggle('hidden',t!=='traj');
+}
+$('#tabChat').onclick=()=>switchTab('chat'); $('#tabTraj').onclick=()=>switchTab('traj');
+
+/* =================== TRAJECTORY =================== */
+function renderTraj(){
+  const s=sessions[state.cur]||{traj:[]};
+  $('#trajList').innerHTML=s.traj.map(e=>'<div class="traj-entry"><span class="te-time">'+e.t+'</span><span class="te-badge '+e.k+'">'+e.k+'</span><span class="te-text">'+(e.k==='ASSISTANT'&&e.x.length>90?'<em>'+esc(e.x)+'</em>':esc(e.x))+'</span></div>').join('');
+}
+const TL_COLORS=['#a78bfa','#ff7a2f','#3fb950','#58a6ff','#8b949e','#e3b341'];
+(function buildTL(){
+  const mk=(n,gap)=>{let h='';for(let i=0;i<n;i++){const w=(Math.sin(i*7.3)*0.5+0.9)*4;h+='<span class="tl-seg" style="flex:'+w.toFixed(2)+' 1 0;background:'+TL_COLORS[i%TL_COLORS.length]+(gap?';margin-right:6px':'')+'"></span>'}return h};
+  $('#timeline').innerHTML='<div class="tl-row dur">'+mk(38,false)+'</div><div class="tl-row turns">'+mk(24,true)+'</div><div class="tl-row idle">'+mk(50,false).replace(/flex:[\d.]+/g,'flex:0.4 1 0;background:#3a3d44')+'</div>';
+})();
+$('#ckDur').onchange=e=>$('.tl-row.dur').classList.toggle('hidden',!e.target.checked);
+$('#ckTurns').onchange=e=>$('.tl-row.turns').classList.toggle('hidden',!e.target.checked);
+$('#ckIdle').onchange=e=>$('.tl-row.idle').classList.toggle('hidden',!e.target.checked);
+$('#trajSearch').oninput=e=>{const q=e.target.value.toLowerCase();$$('#trajList .traj-entry').forEach(el=>el.style.display=el.textContent.toLowerCase().includes(q)?'':'none')};
+
+/* =================== FILES PANE =================== */
+const TREE=[['.__pycache__',[]],['._datavolcs_backup',[]],['actions',[]],['agent_web',['config','core','dashboard','memory','plugins']],['config',[]],['core',[]],['dashboard',[]],['memory',[]],['plugins',[]],['main.py',null],['README_WITH_AGENT.md',null],['requirements.txt',null],['setup.py',null],['ui_agent_chat.py',null],['v4.py',null]];
+$('#pfTree').innerHTML=TREE.map(([n,ch])=>{
+  if(ch===null)return '<li class="tree-li"><span class="tree-row"><span class="tw"></span><span class="fic file"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span>'+n+'</span></li>';
+  const kids=ch.length?'<ul class="tree-children">'+ch.map(c=>'<li class="tree-li"><span class="tree-row"><span class="tw"></span><span class="fic"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>'+c+'</span></li>').join('')+'</ul>':'';
+  return '<li class="tree-li"><span class="tree-row"><span class="tw"><svg class="ic" style="width:10px;height:10px" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg></span><span class="fic"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>'+n+'</span>'+kids+'</li>';
+}).join('');
+$('#pfTree').addEventListener('click',e=>{const r=e.target.closest('.tree-row');if(r)r.parentElement.classList.toggle('open')});
+$('#btnSplit').onclick=()=>$('#paneFiles').classList.toggle('hidden');
+$('#pfClose').onclick=()=>$('#paneFiles').classList.add('hidden');
+
+/* =================== MENUS =================== */
+let curMenu=null;
+function openMenu(menu,anchor,onPick){
+  closeMenu(); curMenu={menu,onPick};
+  menu.classList.add('open');
+  const r=anchor.getBoundingClientRect(), mw=menu.offsetWidth||200, mh=menu.offsetHeight||160;
+  let x=Math.min(r.left,innerWidth-mw-10), y=r.bottom+6;
+  if(y+mh>innerHeight-8)y=r.top-mh-6;
+  menu.style.left=x+'px'; menu.style.top=y+'px';
+}
+function closeMenu(){if(curMenu){curMenu.menu.classList.remove('open');curMenu=null}}
+document.addEventListener('mousedown',e=>{if(curMenu&&!curMenu.menu.contains(e.target)&&!e.target.closest('[data-menubtn]'))closeMenu()});
+function bindMenu(menu){menu.addEventListener('click',e=>{const li=e.target.closest('li');if(!li||!curMenu)return;const cb=curMenu.onPick;closeMenu();cb&&cb(li.dataset.val,li)})}
+['menuEnv','menuPerm','menuModel','menuMode','menuWs','menuOpen'].forEach(id=>bindMenu($('#'+id)));
+
+/* env menu */
+$('#btnEnv').setAttribute('data-menubtn','1');
+$('#btnEnv').onclick=e=>{e.stopPropagation();openMenu($('#menuEnv'),e.currentTarget,v=>{
+  if(v==='explorer'){$('#paneFiles').classList.remove('hidden');toast('Explorador de archivos abierto','📁')}
+  else if(v==='vscode')toast('Abriendo VS Code…','💻');
+  else toast('Abriendo Git Bash…','🖥️');
+})};
+/* download log */
+$('#btnDownload').onclick=()=>{
+  const f=findSess(state.cur); let txt='FOX ASISTANT — registro de sesión\nSesión: '+(f?f.s.title:'-')+'\nFecha: '+new Date().toLocaleString()+'\n\n=== CHAT ===\n'+$('#msgList').innerText+'\n\n=== TRAYECTORIA ===\n'+(sessions[state.cur]?sessions[state.cur].traj.map(e=>e.t+' ['+e.k+'] '+e.x).join('\n'):'');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'})); a.download='fox-session-log.txt'; a.click();
+  toast('Registro de sesión descargado','⬇️');
+};
+
+/* =================== COMPOSERS =================== */
+let attachedFiles = [];
+function handleFileSelect(e) {
+  const files = e.target.files;
+  for (let f of files) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      attachedFiles.push({
+        name: f.name,
+        type: f.type,
+        data: evt.target.result.split(',')[1] // Guardamos solo base64
+      });
+      toast(`Archivo ${f.name} adjuntado`, '📎');
+    };
+    reader.readAsDataURL(f);
+  }
+}
+document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+
+function initComposer(box,onSend){
+  const ta=box.querySelector('textarea');
+  const grow=()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,180)+'px'};
+  ta.addEventListener('input',grow);
+  ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
+  const send=()=>{const v=ta.value.trim();if(!v && attachedFiles.length === 0)return;ta.value='';grow();onSend(v)};
+  box.querySelector('.send').onclick=send;
+  const perm=box.querySelector('.c-perm'); perm.setAttribute('data-menubtn','1');
+  perm.onclick=e=>{e.stopPropagation();openMenu($('#menuPerm'),perm,v=>{perm.querySelector('.c-perm-lbl').textContent=v;state.perm=v;syncPerm();saveState();})};
+  const mod=box.querySelector('.c-model'); mod.setAttribute('data-menubtn','1');
+  mod.onclick=e=>{e.stopPropagation();openMenu($('#menuModel'),mod,v=>{mod.querySelector('.c-model-lbl').textContent=v;state.model=v;syncModel();saveState();})};
+  const gl=box.querySelector('.c-globe');
+  gl.onclick=()=>{gl.classList.toggle('on');toast(gl.classList.contains('on')?'Búsqueda web activada':'Búsqueda web desactivada','🌐')};
+}
+function syncPerm(){$$('.c-perm-lbl').forEach(el=>el.textContent=state.perm)}
+function syncModel(){$$('.c-model-lbl').forEach(el=>el.textContent=state.model)}
+
+/* =================== WEBSOCKET BACKEND =================== */
+let ws;
+let currentAssistantMessage = null;
+let currentAssistantBody = null;
+let currentBuffer = '';
+
+function connectWebSocket() {
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsHost = location.host || '127.0.0.1:3080';
+  ws = new WebSocket(`${wsProto}//${wsHost}/ws/agent`);
+  
+  ws.onopen = () => {
+    toast('Conectado al backend de Fox', '🔌');
+    // Pedir los workspaces al backend al iniciar
+    ws.send(JSON.stringify({action: 'get_workspaces'}));
+  };
+  
+  ws.onclose = () => {
+    toast('Desconectado del backend. Reconectando...', '❌');
+    setTimeout(connectWebSocket, 5000); 
+  };
+  
+  ws.onerror = (err) => {
+    console.error("WS Error:", err);
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleStreamEvent(data);
+    } catch (e) {
+      console.error('Error parseando mensaje WS:', e);
+    }
+  };
+}
+
+function handleStreamEvent(data) {
+  if (data.type === 'workspaces') {
+    state.ws = data.workspaces;
+    if(state.ws.length > 0 && !state.nsWs) {
+      state.nsWs = state.ws[0].id;
+      $('#nsWsName').textContent = state.ws[0].name;
+    }
+    // Set first workspace active
+    if (state.ws.length > 0 && !state.cur) {
+      state.expanded[state.ws[0].id] = true;
+      if (state.ws[0].sessions.length > 0) {
+        openSession(state.ws[0].sessions[0].id);
+      }
+    }
+    renderSidebar($('#wsSearchInput').value);
+    return;
+  }
+  if (data.type === 'history') {
+    // Render historic messages for current session
+    $('#msgList').innerHTML = '';
+    sessions[state.cur] = {traj:[],stats:['Usage '+Math.floor(Math.random()*10)+'k tok','Ran for 1s',nowT()],html:''};
+    for(let m of data.messages) {
+      const art = document.createElement('article');
+      if(m.role === 'user') {
+        art.className = 'msg user'; 
+        art.innerHTML = '<div class="bubble">'+esc(m.content)+'</div>';
+      } else {
+        art.className = 'msg assistant';
+        art.innerHTML = '<div class="msg-body"><div class="delta-container">'+mdLite(m.content)+'</div></div>';
+      }
+      $('#msgList').appendChild(art);
+    }
+    saveCurChat();
+    $('#msgScroll').scrollTop = 1e6;
+    return;
+  }
+  
+  const wrap = $('#msgList');
+  
+  if (!currentAssistantMessage) {
+    currentAssistantMessage = document.createElement('article');
+    currentAssistantMessage.className = 'msg assistant';
+    currentAssistantMessage.innerHTML = '<div class="msg-body"></div>';
+    wrap.appendChild(currentAssistantMessage);
+    currentAssistantBody = currentAssistantMessage.querySelector('.msg-body');
+  }
+
+  if (data.type === 'delta') {
+    let lastEl = currentAssistantBody.lastElementChild;
+    if (!lastEl || !lastEl.classList.contains('delta-container')) {
+      lastEl = document.createElement('div');
+      lastEl.className = 'delta-container';
+      currentAssistantBody.appendChild(lastEl);
+      currentBuffer = '';
+    }
+    currentBuffer += (data.content || '');
+    lastEl.innerHTML = mdLite(currentBuffer);
+
+  
+  } else if (data.type === 'plan') {
+    const art = document.createElement('article');
+    art.className = 'msg assistant';
+    art.innerHTML = `<div class="msg-body">
+      <div style="background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:12px;">
+        <h4 style="margin:0 0 8px 0; color:var(--text)">📋 Plan de Acción Propuesto</h4>
+        <div style="font-size:13px; color:var(--muted); margin-bottom:12px;">${mdLite(data.plan)}</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-approve-plan" style="background:#3fb950; color:#fff; border:none;">Aprobar Plan</button>
+          <button class="btn ghost btn-reject-plan">Rechazar</button>
+        </div>
+      </div>
+    </div>`;
+    $('#msgList').appendChild(art);
+    $('#msgScroll').scrollTop = 1e6;
+    
+    art.querySelector('.btn-approve-plan').onclick = () => {
+      art.style.opacity = '0.6';
+      art.querySelector('.btn-approve-plan').disabled = true;
+      ws.send(JSON.stringify({action: 'approve_plan'}));
+    };
+    art.querySelector('.btn-reject-plan').onclick = () => {
+      art.remove();
+      toast('Plan rechazado', '❌');
+    };
+  } else if (data.type === 'thinking') {
+    const t = document.createElement('div');
+    t.style = 'color: var(--faint); font-style: italic; margin-bottom: 8px; font-size: 13px;';
+    t.textContent = '🤔 Pensando: ' + (data.content || '');
+    currentAssistantBody.appendChild(t);
+
+  } else if (data.type === 'tool_start') {
+    const tb = document.createElement('div');
+    tb.className = 'tool-container';
+    tb.innerHTML = `<div class="codeblock" style="margin: 6px 0;"><div class="cb-head"><span>⚙️ Tool: ${esc(data.tool_name || '')}</span></div><pre><code>${esc(data.args || '')}</code></pre></div>`;
+    currentAssistantBody.appendChild(tb);
+
+    const s = sessions[state.cur];
+    if (s) {
+      s.traj.push({t: nowT(), k: 'TOOL', x: data.tool_name});
+      renderTraj();
+    }
+
+  } else if (data.type === 'tool_result') {
+    const tb = document.createElement('div');
+    tb.className = 'tool-container';
+    tb.innerHTML = `<div class="codeblock" style="margin: 6px 0;"><div class="cb-head"><span>✅ Tool Result</span></div><pre><code style="color:var(--green)">${esc(data.result || '')}</code></pre></div>`;
+    currentAssistantBody.appendChild(tb);
+
+  } else if (data.type === 'done') {
+    const foot = document.createElement('div');
+    foot.className = 'msg-foot';
+    foot.innerHTML = '<div class="reactions"><button class="icon-btn r-link"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button><button class="icon-btn r-up"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M7 22V11l5-8a3 3 0 0 1 3 3v5h6l-2 11z"/></svg></button><button class="icon-btn r-down"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M17 2v11l-5 8a3 3 0 0 1-3-3v-5H3l2-11z"/></svg></button></div><span class="stat">🕐 '+nowT()+'</span>';
+    currentAssistantBody.appendChild(foot);
+    
+    const s = sessions[state.cur];
+    if (s) {
+      s.traj.push({t: nowT(), k: 'ASSISTANT', x: 'Respuesta completada.'});
+      renderTraj();
+    }
+    saveCurChat();
+    currentAssistantMessage = null;
+    currentAssistantBody = null;
+  }
+  
+  $('#msgScroll').scrollTop = 1e6;
+}
+
+function sendToBackend(text, sidOverride=null) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    let wsName = '';
+    const found = findSess(sidOverride || state.cur);
+    if (found) {
+      wsName = found.w.name;
+    } else {
+      const w = state.ws.find(w => w.id === state.nsWs) || state.ws[0];
+      wsName = w ? w.name : 'default';
+    }
+
+    // Dynamically get all API Keys from UI inputs
+    const apiKeys = {};
+    document.querySelectorAll('[id^="api_key_"]').forEach(inp => {
+      const keyName = inp.id.replace('api_key_', '');
+      if (inp.value) apiKeys[keyName] = inp.value;
+    });
+
+    let _provider = null;
+    let _model = state.model;
+    if (state.model.includes(':')) {
+      const parts = state.model.split(':');
+      _provider = parts[0];
+      _model = parts.slice(1).join(':');
+    }
+
+    
+    if (text.startsWith('/plan ')) {
+      payload.plan = true;
+      payload.text = text.substring(6).trim();
+    }
+    const payload = {
+      action: 'send',
+      text: text,
+      session_id: sidOverride || state.cur,
+      workspace: wsName,
+      provider: _provider,
+      model: _model,
+      effort: "high",
+      permissions: state.perm,
+      api_keys: apiKeys,
+      files: attachedFiles,
+      folders: state.folders || []
+    };
+    
+    ws.send(JSON.stringify(payload));
+    attachedFiles = []; // Reset attachments after send
+  } else {
+    toast('Error: WebSocket no conectado', '❌');
+  }
+}
+
+function pushUser(text){
+  const u=document.createElement('article'); u.className='msg user'; u.innerHTML='<div class="bubble">'+esc(text)+'</div>';
+  if(attachedFiles.length > 0) {
+    const fDiv = document.createElement('div');
+    fDiv.style = "margin-top: 5px; font-size: 11px; opacity: 0.8;";
+    fDiv.textContent = '📎 ' + attachedFiles.map(f=>f.name).join(', ');
+    u.querySelector('.bubble').appendChild(fDiv);
+  }
+  $('#msgList').appendChild(u); $('#msgScroll').scrollTop=1e6;
+  const s=sessions[state.cur]; if(s){s.traj.push({t:nowT(),k:'USER',x:text});renderTraj()}
+}
+
+initComposer($('#compSession'),text=>{pushUser(text);saveCurChat();sendToBackend(text)});
+initComposer($('#compNew'),text=>{
+  const w=state.ws.find(x=>x.id===state.nsWs)||state.ws[0];
+  const id='s'+(sessSeq++); const title=text.length>34?text.slice(0,34)+'…':text;
+  w.sessions.push({id,title,mode:state.mode}); state.expanded[w.id]=true;
+  sessions[id]={traj:[],stats:['Usage 0 tok','Ran for 0s',nowT()],html:''};
+  openSession(id, true); pushUser(text); saveCurChat(); sendToBackend(text, id);
+  toast('Sesión creada en '+w.name,'✨');
+});
+
+/* reactions & copy (delegated) */
+$('#msgList').addEventListener('click',e=>{
+  const cp=e.target.closest('.cb-copy');
+  if(cp){const code=cp.closest('.codeblock').querySelector('code').innerText;navigator.clipboard&&navigator.clipboard.writeText(code);cp.textContent='Copiado!';setTimeout(()=>cp.textContent='Copiar',1400);return}
+  const fo=e.target.closest('.fopen');
+  if(fo){fo.setAttribute('data-menubtn','1');openMenu($('#menuOpen'),fo,v=>{const nm=fo.closest('.fcard').querySelector('.fname2').textContent;toast(v==='path'?'Ruta copiada: agent_web/static/'+nm:v==='vs'?'Abriendo '+nm+' en VS Code…':'Abriendo '+nm+'…','📄');if(v==='path')navigator.clipboard&&navigator.clipboard.writeText('C:\\Users\\Matias Lopez\\Desktop\\fox_asistente_v3\\agent_web\\static\\'+nm)});return}
+  const r=e.target.closest('.reactions .icon-btn');
+  if(r){if(r.classList.contains('r-link')){navigator.clipboard&&navigator.clipboard.writeText(location.href+'#session-'+state.cur);toast('Enlace de la sesión copiado','🔗')}else r.classList.toggle('on');return}
+  const fl=e.target.closest('.files-line a');
+  if(fl){toast('Abriendo '+fl.textContent.split(' ')[1]+'…','📄')}
+});
+
+/* =================== NEW SESSION CONTROLS =================== */
+$('#btnNsWs').setAttribute('data-menubtn','1');
+$('#btnNsWs').onclick=e=>{e.stopPropagation();
+  const m=$('#menuWs');
+  m.innerHTML=state.ws.map(w=>'<li data-val="'+w.id+'"><span class="mi"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>'+esc(w.name)+(w.id===state.nsWs?'<span class="chk">✓</span>':'')+'</li>').join('')+'<li class="sep-li"></li><li data-val="__add"><span class="mi"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>Añadir workspace…</li>';
+  openMenu(m,e.currentTarget,v=>{
+    if(v==='__add'){openDir();return}
+    state.nsWs=v; $('#nsWsName').textContent=(state.ws.find(w=>w.id===v)||{}).name;
+  });
+};
+$('#btnNsMode').setAttribute('data-menubtn','1');
+$('#btnNsMode').onclick=e=>{e.stopPropagation();openMenu($('#menuMode'),e.currentTarget,v=>{state.mode=v;$('#nsModeName').textContent=v;saveState()})};
+
+/* =================== DIRECTORY MODAL =================== */
+const FS={'Inicio':['Escritorio','Descargas','Documentos','Imágenes','Videos','Música'],
+'Escritorio':['fox_asistente_v3','Fox_asistente_v2','proyectos','capturas'],'Descargas':['installers','docs-pdf'],
+'Documentos':['informes','notas'],'Imágenes':['screenshots'],'Videos':['grabaciones'],'Música':[],
+'fox_asistente_v3':['agent_web','main.py'],'Fox_asistente_v2':['legacy'],'proyectos':['web-fox'],'capturas':[],
+'installers':[],'docs-pdf':[],'informes':[],'notas':[],'screenshots':[],'grabaciones':[],'agent_web':['static'],'legacy':[],'web-fox':[],'static':[]};
+const DIR_LEFT=[['Inicio','🏠'],['Escritorio','🖥️'],['Descargas','⬇️'],['Documentos','📄'],['Imágenes','🖼️'],['Música','🎵'],['Videos','🎬'],['Este equipo','💾']];
+let dirPath=['Inicio'];
+function renderDir(){
+  $('#dirLeft').innerHTML='<div class="grp">Acceso rápido</div>'+DIR_LEFT.map(([n,i])=>'<div class="dn'+(dirPath[0]===n?' sel':'')+'" data-n="'+n+'">'+i+' '+n+'</div>').join('');
+  $('#dirCrumb').innerHTML='<span style="color:var(--muted)">💻</span> Este equipo &nbsp;›&nbsp; '+dirPath.join(' &nbsp;›&nbsp; ');
+  const cur=dirPath[dirPath.length-1];
+  const kids=FS[cur]||[];
+  $('#dirRight').innerHTML='<div class="dir-col"><span style="flex:1">Nombre</span><span class="dt">Fecha de modificación</span><span class="ty">Tipo</span></div>'+
+    (kids.length?kids.map(k=>'<div class="dir-row" data-n="'+esc(k)+'"><span>'+( (FS[k]!==undefined&&Array.isArray(FS[k]))||!k.includes('.')?'📁':'')+'</span><span class="nm">'+esc(k)+'</span><span class="dt">21/09/2026 17:0'+(k.length%6)+'</span><span class="ty">'+(k.includes('.')?'Archivo':'Carpeta de archivos')+'</span></div>').join(''):'<div class="dir-empty">Ningún elemento coincide con el criterio de búsqueda.</div>');
+  $('#dirInput').value=cur;
+}
+$('#dirLeft').addEventListener('click',e=>{const n=e.target.closest('.dn');if(n){dirPath=[n.dataset.n];renderDir()}});
+$('#dirRight').addEventListener('dblclick',e=>{const r=e.target.closest('.dir-row');if(r&&!r.dataset.n.includes('.')){dirPath.push(r.dataset.n);renderDir()}});
+$('#dirBack').onclick=()=>{if(dirPath.length>1){dirPath.pop();renderDir()}};
+$('#dirUp').onclick=()=>{if(dirPath.length>1){dirPath.pop();renderDir()}};
+$('#dirFwd').onclick=()=>toast('Sin historial hacia adelante','🧭');
+async function openDir(){
+  try {
+    const res = await fetch('/api/fs/pick');
+    const data = await res.json();
+    if (data.path) {
+      // Extraemos el nombre de la carpeta de la ruta
+      const name = data.path.split(/[\\/]/).pop() || "Nueva Carpeta";
+      // Si no existe el workspace con este nombre, lo creamos
+      if(!state.ws.find(w=>w.name===name)){
+        state.ws.push({id:'w'+Date.now(), name, sessions:[]});
+        renderSidebar($('#wsSearchInput').value);
+      }
+      state.nsWs=(state.ws.find(w=>w.name===name)||{}).id; 
+      $('#nsWsName').textContent=name;
+      toast('Workspace "'+name+'" añadido', '📁');
+      
+      // Agregamos a state.folders para que el backend tenga acceso real
+      state.folders = state.folders || [];
+      if (!state.folders.includes(data.path)) {
+        state.folders.push(data.path);
+      }
+    }
+  } catch (e) {
+    toast('Error al seleccionar carpeta', '❌');
+  }
+}
+$('#dirSelect').onclick=()=>{
+  const name=$('#dirInput').value.trim()||dirPath[dirPath.length-1];
+  if(!state.ws.find(w=>w.name===name)){state.ws.push({id:'w'+Date.now(),name,sessions:[]});renderSidebar($('#wsSearchInput').value);}
+  state.nsWs=(state.ws.find(w=>w.name===name)||{}).id; $('#nsWsName').textContent=name;
+  $('#ovDir').classList.remove('open'); toast('Workspace "'+name+'" añadido','📁');
+};
+$$('[data-close]').forEach(b=>b.onclick=()=>$('#'+b.dataset.close).classList.remove('open'));
+
+/* =================== SETTINGS =================== */
+$('#btnSettings').onclick=()=>$('#ovSettings').classList.add('open');
+$$('.set-nav button').forEach(b=>b.onclick=()=>{
+  $$('.set-nav button').forEach(x=>x.classList.remove('active')); b.classList.add('active');
+  $$('.set-pane').forEach(p=>p.classList.add('hidden')); $('#set-'+b.dataset.set).classList.remove('hidden');
+});
+$('#setLang').onchange=e=>{state.lang=e.target.value;applyI18n();saveState();toast('Idioma: '+(state.lang==='es'?'Español':'English'),'🌐')};
+$$('.theme-card').forEach(c=>c.onclick=()=>{
+  $$('.theme-card').forEach(x=>x.classList.remove('sel')); c.classList.add('sel');
+  const th=c.dataset.th; document.documentElement.dataset.theme=(th==='system')?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):th;
+  toast('Tema '+c.textContent.trim()+' aplicado','🎨');
+});
+$('#setFont').onchange=e=>{const v=Math.max(12,Math.min(18,+e.target.value||14));document.documentElement.style.setProperty('--fs',v+'px');toast('Tamaño de fuente: '+v+'px','🔠')};
+$('#setConv').onchange=e=>{document.documentElement.style.setProperty('--msg-pad',e.target.value==='compact'?'14px':'24px');toast('Vista '+e.target.value,'🗂️')};
+$('#setBusy').onchange=e=>toast('Envío mientras está ocupado: '+e.target.value,'⚙️');
+$('#setPerm').onchange=e=>{state.perm=e.target.value;syncPerm();saveState();toast('Permiso por defecto: '+state.perm,'🛡️')};
+$('#btnOpenCfg').onclick=()=>toast('Abriendo fox-config.json…','📝');
+/* providers */
+
+$('#provList').addEventListener('click', async e=>{
+  const row = e.target.closest('.prov-row'); if(!row) return;
+  
+  if(e.target.closest('.p-edit')) row.classList.toggle('editing');
+  
+  if(e.target.closest('.p-save')){
+    row.classList.remove('editing');
+    // Guardaremos enviando el api_key al backend, o dejaremos que se envíe en cada mensaje
+    toast('API key guardada en UI. Se enviará en el próximo mensaje.', '🔑');
+  }
+
+  if(e.target.closest('.p-save-custom')){
+    const pid = row.querySelector('.c-id').value.trim();
+    const name = row.querySelector('.c-name').value.trim();
+    const url = row.querySelector('.c-url').value.trim();
+    const model = row.querySelector('.c-model').value.trim();
+    const key = row.querySelector('.c-key').value.trim();
+    if(!pid || !name || !url || !model) {
+      toast('Faltan datos', '⚠️'); return;
+    }
+    const res = await fetch('/api/provider', {
+      method: 'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: pid, name: name, base_url: url, api_key: key, model: model})
+    });
+    const data = await res.json();
+    if(data.ok) {
+      toast('Proveedor guardado', '✅');
+      fetchMeta(); // Recarga la lista de providers
+    } else {
+      toast('Error: ' + data.error, '❌');
+    }
+  }
+
+  if(e.target.closest('.p-del') || e.target.closest('.p-del-custom')){
+    // Si es un proveedor ya guardado
+    if(row.dataset.id){
+      await fetch('/api/provider/' + row.dataset.id, {method: 'DELETE'});
+      fetchMeta();
+    }
+    row.remove();
+    toast('Proveedor eliminado', '🗑️');
+  }
+});
+
+let provSeq=1;
+function addProv(custom){
+  const id = 'custom_'+Date.now();
+  const d=document.createElement('div'); d.className='prov-row editing';
+  d.dataset.custom = "1";
+  d.innerHTML=`<div class="prov-top"><span class="nm">Nuevo Custom</span><span class="badge-preview">Custom</span><span class="sp"></span><button class="btn-sm danger p-del-custom">Cancelar/Eliminar</button></div>
+  <div class="prov-edit" style="display:flex;flex-direction:column;gap:5px;padding-top:10px;">
+    <input type="text" class="c-id" placeholder="ID (ej: local_ollama)" value="${id}">
+    <input type="text" class="c-name" placeholder="Nombre (ej: Mi Servidor Local)">
+    <input type="text" class="c-url" placeholder="Base URL (ej: http://localhost:11434/v1)">
+    <input type="text" class="c-model" placeholder="Model ID (ej: llama3)">
+    <input type="password" class="c-key" placeholder="API Key (opcional)">
+    <button class="btn-sm p-save-custom" style="align-self:flex-end">Guardar Proveedor</button>
+  </div>`;
+  $('#provList').appendChild(d);
+}
+$('#btnAddProv').onclick=()=>addProv(false);
+$('#btnAddCustom').onclick=()=>addProv(true);
+/* plugins */
+$$('[data-plug]').forEach(sw=>sw.onchange=()=>toast('Plugin '+sw.dataset.plug+(sw.checked?' activado':' desactivado'),'🔌'));
+/* presets */
+$('#presetGrid').addEventListener('click',e=>{
+  const card=e.target.closest('.preset-card'); if(!card)return;
+  if(e.target.closest('.p-copy')){
+    const c=card.cloneNode(true); c.querySelector('.nm').textContent=card.querySelector('.nm').textContent+' (copia)';
+    const df=c.querySelector('.df'); if(df)df.remove(); $('#presetCustom').appendChild(c); toast('Preset duplicado en Personalizados','📋');
+  }
+  if(e.target.closest('.p-ren')){
+    const nm=card.querySelector('.nm'); const old=nm.textContent;
+    nm.innerHTML='<input class="sel" style="width:130px;padding:3px 7px" value="'+old+'">';
+    const inp=nm.querySelector('input'); inp.focus(); inp.select();
+    inp.onblur=()=>{nm.textContent=inp.value||old;toast('Preset renombrado','✏️')};
+    inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur()};
+  }
+});
+$('#btnDraft').onclick=()=>{
+  const c=document.createElement('div'); c.className='preset-card';
+  c.innerHTML='<div class="ph"><span class="nm">custom-preset-'+($('#presetCustom').children.length+1)+'</span><span class="bi">Custom</span></div><div class="pd">Borrador generado con Creator mode. Editá herramientas y prompt a gusto.</div><div class="pt">custom</div><div class="pa"><button class="icon-btn p-copy"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button><button class="icon-btn p-ren"><svg class="ic" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg></button></div>';
+  $('#presetCustom').appendChild(c); toast('Borrador de preset creado con Creator mode','🦊');
+};
+
+/* =================== INIT =================== */
+applyI18n(); syncPerm(); syncModel();
+
+// Conectar WebSocket y obtener workspaces (evitando simulación inicial)
+
+let providersMeta = [];
+async function fetchMeta() {
+  try {
+    const res = await fetch('/api/meta');
+    const data = await res.json();
+    providersMeta = data.providers;
+    
+    // Populate Models menu
+    const mm = $('#menuModel');
+    mm.innerHTML = '';
+    providersMeta.forEach(p => {
+      p.models.forEach(m => {
+        const val = p.id + ':' + m;
+        const text = p.name + ' - ' + m;
+        const li = document.createElement('li');
+        li.dataset.val = val;
+        li.textContent = text;
+        mm.appendChild(li);
+      });
+    });
+    
+    // Populate Settings Providers
+    const pl = $('#provList');
+    pl.innerHTML = '';
+    providersMeta.forEach(p => {
+      if ((p.needs_api_key && !p.is_custom) || p.is_custom) {
+        const row = document.createElement('div');
+        row.className = 'prov-row';
+        row.dataset.id = p.id;
+        row.innerHTML = `
+          <div class="prov-top"><span class="nm">${esc(p.name)}</span>${p.is_custom?'<span class="badge-preview">Custom</span>':''}<span class="dot-g" style="${p.has_key?'':'opacity:.3'}"></span><span class="sp"></span><button class="btn-sm p-edit">Editar</button>${p.is_custom?'<button class="btn-sm danger p-del-custom">Eliminar</button>':''}</div>
+          <div class="prov-edit"><input type="password" id="api_key_${esc(p.id)}" placeholder="API Key..."><button class="btn-sm p-save">Guardar</button></div>
+        `;
+        pl.appendChild(row);
+      }
+    });
+  } catch (e) {
+    console.error("Error fetching meta", e);
+  }
+}
+
+if($('#btnAddFolderToEnv')){
+  $('#btnAddFolderToEnv').onclick = async () => {
+    try {
+      const res = await fetch('/api/fs/pick');
+      const data = await res.json();
+      if (data.path) {
+        state.folders = state.folders || [];
+        if (!state.folders.includes(data.path)) {
+          state.folders.push(data.path);
+          toast('Carpeta añadida al entorno', '📁');
+          // Actualizar UI del árbol aquí si es necesario
+        } else {
+          toast('La carpeta ya estaba en el entorno', 'ℹ️');
+        }
+      }
+    } catch (e) {
+      toast('Error al seleccionar carpeta', '❌');
+    }
+  };
+}
+
+fetchMeta();
+
+connectWebSocket();
+
+</script>
+</body>
+</html>
