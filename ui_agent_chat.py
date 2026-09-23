@@ -41,6 +41,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core import providers
+from core.cost_tracker import GLOBAL_COST_TRACKER
 from core.permissions import MODE_LABELS, MODES
 
 # Paleta (coincide con el tema por defecto de Fox).
@@ -541,9 +542,11 @@ class ChatPanel(QWidget):
             limit = _context_limit_for(self._model.currentText())
         self._ctx_bar.set_usage(used, limit)
         if used is not None:
-            self._ctx_text.setText(f"Contexto: {used:,} / {limit:,} tokens")
+            model_name = self._model.currentText()
+            summary = GLOBAL_COST_TRACKER.get_summary(model_name)
+            self._ctx_text.setText(f"Contexto: {used:,} / {limit:,} tokens | Sesión: {summary}")
         else:
-            self._ctx_text.setText("Contexto: —")
+            self._ctx_text.setText("Contexto: -")
 
     def on_event(self, ev: dict[str, Any]) -> None:
         et = ev.get("type", "")
@@ -570,6 +573,13 @@ class ChatPanel(QWidget):
             self._add_bubble("tool", f"✓ {ev.get('name', '')}: {r[:120]}")
         elif et == "usage":
             u = ev.get("usage") or {}
+            prompt_tokens = u.get("prompt_tokens", 0)
+            comp_tokens = u.get("completion_tokens", 0)
+            
+            # Solo sumar la diferencia de prompt (es acumulativo en la misma query)
+            # Pero en realidad ev['usage'] da el total de este turno.
+            # Lo sumaremos así:
+            GLOBAL_COST_TRACKER.add_usage(prompt_tokens, comp_tokens)
             self.set_context(u.get("total_tokens"), None)
         elif et == "done":
             content = ev.get("content", "")

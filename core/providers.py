@@ -449,10 +449,13 @@ def _resolve_provider(provider_id: str) -> dict | None:
     if cp:
         models = cp.get("models") or []
         default = cp.get("default_model") or (models[0] if models else "")
+        url = cp["url"]
+        if not url.endswith("/chat/completions"):
+            url = f"{url.rstrip('/')}/chat/completions"
         return {
             "name": cp.get("name") or provider_id,
             "api_style": "openai",
-            "url": cp["url"],
+            "url": url,
             "models": models,
             "default_model": default,
             "needs_api_key": True,
@@ -958,7 +961,9 @@ def _stream_openai(
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    headers.update(PROVIDERS[provider].get("extra_headers", {}) or {})
+    
+    prov_data = _resolve_provider(provider) or {}
+    headers.update(prov_data.get("extra_headers", {}) or {})
 
     # Preprocessing: convertir mensajes con image_path al formato vision
     processed_messages = []
@@ -980,7 +985,9 @@ def _stream_openai(
     if tools:
         payload["tools"] = normalize_tools(tools)
         payload["tool_choice"] = "auto"
-    if PROVIDERS[provider].get("include_usage"):
+    
+    # Algunas APIs mueren si mandas stream_options
+    if prov_data.get("include_usage"):
         payload["stream_options"] = {"include_usage": True}
 
     full_content = ""

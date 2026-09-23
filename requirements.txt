@@ -77,3 +77,8 @@ plyer; sys_platform == "win32"
 # edge_tts            # TTS alternativo por Edge
 # vosk                # solo si querés el paquete pip en vez de la DLL incluida
 # faster-whisper      # transcripción local (core/stt.py legacy)
+
+# --- DEPENDENCIAS DEL AGENTE WEB ---
+PyQt6-WebEngine
+websockets
+pydantic

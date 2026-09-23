@@ -73,7 +73,14 @@
   const trajectory = $("trajectory");
 
   function hideEmpty() { const e = $("empty-state"); if (e) e.remove(); }
-  function scrollBottom() { messages.scrollTop = messages.scrollHeight; }
+  let msgScrollAF = null;
+  function scrollBottom() {
+    if (msgScrollAF) return;
+    msgScrollAF = requestAnimationFrame(() => {
+      messages.scrollTop = messages.scrollHeight;
+      msgScrollAF = null;
+    });
+  }
 
   // ═══════════════════ 2. DROPDOWNS (genérico + click outside) ═══════════════════
   function closeAllDropdowns() {
@@ -191,6 +198,7 @@
       `${m.turns} turns · ${m.steps} steps · ${m.speed} tok/s · ${m.tokens} tok · Cache hit ${m.cacheHit}%`;
   }
 
+  let trajScrollAF = null;
   function trajNode(kind, text, cls = "") {
     const t = new Date().toLocaleTimeString("es", { hour12: false });
     const node = el("div", `traj-node ${cls}`);
@@ -198,7 +206,12 @@
     node.appendChild(el("span", "t-kind", kind));
     node.appendChild(el("span", "", text));
     trajectory.appendChild(node);
-    trajectory.scrollTop = trajectory.scrollHeight;
+    if (!trajScrollAF) {
+      trajScrollAF = requestAnimationFrame(() => {
+        trajectory.scrollTop = trajectory.scrollHeight;
+        trajScrollAF = null;
+      });
+    }
     const empty = trajectory.querySelector(".traj-empty");
     if (empty) empty.remove();
   }
@@ -345,7 +358,20 @@
         setStatus("");
         renderTelemetry();
         break;
-      case "error": finishTurn(""); setStatus("❌ " + (ev.error || "Error")); trajNode("error", ev.error || "Error", "error"); break;
+      case "error": 
+        finishTurn(""); 
+        setStatus("❌ " + (ev.error || "Error")); 
+        trajNode("error", ev.error || "Error", "error"); 
+        
+        const errMsg = el("div", "msg assistant");
+        const errBub = el("div", "bubble");
+        errBub.style.backgroundColor = "rgba(255, 0, 0, 0.1)";
+        errBub.style.color = "#ff6b6b";
+        errBub.textContent = "⚠️ Error del proveedor: " + (ev.error || "Error desconocido");
+        errMsg.appendChild(errBub);
+        messages.appendChild(errMsg);
+        scrollBottom();
+        break;
       case "plan":
         hideEmpty();
         const pm = el("div", "msg assistant");

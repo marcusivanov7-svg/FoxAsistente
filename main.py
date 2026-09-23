@@ -1231,9 +1231,8 @@ class FoxLive:
             print(f"[AgentWeb] Error inesperado: {e}")
 
     def _build_tools(self):
-        """Herramientas de función + Google Search nativo (grounding) opcional.
-        El grounding hace que el modelo busque en Google EN SEGUNDO PLANO
-        mientras genera la respuesta de voz, sin pausas por herramientas."""
+        """Herramientas de función.
+        (El grounding nativo fue eliminado por consumir excesiva cuota)."""
         tools = [
             {
                 "function_declarations": self._live_tool_declarations
@@ -1241,8 +1240,6 @@ class FoxLive:
                 + self._plugin_registry.get_tool_declarations()
             }
         ]
-        if getattr(self, "_use_grounding", True):
-            tools.append({"google_search": {}})
         return tools
 
     def _build_config(self) -> types.LiveConnectConfig:
@@ -2114,17 +2111,12 @@ class FoxLive:
         try:
             stream = _open_spk(_spk_dev)
         except Exception as _e:
-            # A chosen output that the host API accepts by name but refuses to
-            # open (exclusive mode, wrong sample rate, device asleep) must not
-            # cost the user their voice. Fall back to the default and say so.
             if _spk_dev is None:
                 raise
             print(f"[FOX] ⚠️  Output device '{_spk_name}' failed: {_e} — using default")
             self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
             stream = _open_spk(None)
 
-        # Preguntar al dispositivo cuán atrás van los parlantes (en vez de
-        # asumirlo). De eso se dimensiona la cola de eco.
         try:
             lat = float(getattr(stream, "latency", 0.0) or 0.0)
             if 0.0 < lat < 1.0:
@@ -2135,25 +2127,23 @@ class FoxLive:
             pass
 
         try:
-            # ── Playout (agrupado, anti-hipo) ─────────────────────────────────
-            # En vez de escribir cortes fijos de ~50 ms (un round-trip al pool
-            # de hilos por cada uno), agrupamos TODO el audio disponible en UNA
-            # sola escritura de hasta ~200 ms. Menos escrituras = menos contención
-            # con la ejecución de herramientas (web_search usa el mismo pool),
-            # que es justo lo que causaba los hipos al buscar en internet.
-            _MAX_BATCH = 9600       # ~200 ms (24 kHz · 16-bit · mono)
+            # ── Playout (Jitter Buffer Adaptativo y Lotes Dinámicos) ──────────
+            _MAX_BATCH_LARGE = 9600  # ~200 ms (cuando el buffer está lleno, evita hipos)
+            _MAX_BATCH_SMALL = 2400  # ~50 ms  (cuando el buffer está vacío, mejora el barge-in)
+            _INITIAL_THRESHOLD = 1920 # ~40 ms  (umbral inicial más bajo para menor latencia)
+            _FULL_THRESHOLD = 4800   # ~100 ms (umbral de seguridad si la red es lenta)
+            
             _buf = bytearray()
             _started = False
+            _dynamic_threshold = _INITIAL_THRESHOLD
 
             while True:
-                # Interrupción → descartar también lo que ya quedó buffereado.
                 if getattr(self, "_interrupted", False):
                     _buf.clear()
                     _started = False
                     await asyncio.sleep(0.01)
                     continue
 
-                # Drenar todo lo ya encolado hacia el buffer de playout.
                 try:
                     while True:
                         _buf.extend(self.audio_in_queue.get_nowait())
@@ -2166,7 +2156,6 @@ class FoxLive:
                     and self.audio_in_queue.empty()
                 )
 
-                # FOX: altavoz silenciado → descartar el audio en vez de reproducirlo
                 if getattr(self, "_speaker_muted", False):
                     _buf.clear()
                     if turn_done:
@@ -2175,18 +2164,18 @@ class FoxLive:
                     await asyncio.sleep(0.01)
                     continue
 
-                # Colchón de precarga: esperar a tener ~100 ms de audio antes de
-                # escribir, para puentear los huecos de red en respuestas largas.
-                # Al terminar el turno se vuelca lo que quede.
-                if len(_buf) < 4800 and not turn_done:
+                # Jitter Buffer Adaptativo:
+                # Esperamos al menos 40ms (_INITIAL_THRESHOLD) para empezar a hablar.
+                # Si hay un TimeoutError, asumimos que la red es lenta y subimos el colchón.
+                if len(_buf) < _dynamic_threshold and not turn_done:
                     try:
                         _buf.extend(
                             await asyncio.wait_for(
-                                self.audio_in_queue.get(), timeout=0.1
+                                self.audio_in_queue.get(), timeout=0.05
                             )
                         )
                     except asyncio.TimeoutError:
-                        pass
+                        _dynamic_threshold = min(_FULL_THRESHOLD, _dynamic_threshold + 960)
                     continue
 
                 if not _buf:
@@ -2194,30 +2183,33 @@ class FoxLive:
                         self.set_speaking(False)
                         self._turn_done_event.clear()
                         _started = False
+                        _dynamic_threshold = _INITIAL_THRESHOLD
                     await asyncio.sleep(0.01)
                     continue
 
                 _started = True
                 self.set_speaking(True)
 
-                # Agrupar TODO lo disponible en UNA sola escritura (hasta ~200 ms).
-                # Menos round-trips al pool de hilos = menos contención con las
-                # herramientas (web_search), que es lo que quitaba los hipos.
-                batch = bytes(_buf[:_MAX_BATCH])
-                del _buf[:_MAX_BATCH]
+                # Lotes Dinámicos (Barge-in mejorado):
+                # Si el buffer tiene mucho audio acumulado, usamos lotes grandes para evitar hipos.
+                # Si está casi vacío, usamos lotes pequeños (50ms) para que, si el usuario interrumpe, 
+                # el audio se corte casi de inmediato.
+                if len(_buf) > 15000:
+                    batch_size = _MAX_BATCH_LARGE
+                else:
+                    batch_size = _MAX_BATCH_SMALL
 
-                # FOX: velocidad de voz (resampleo client-side — este SDK no
-                # soporta speaking_rate en SpeechConfig)
+                batch = bytes(_buf[:batch_size])
+                del _buf[:batch_size]
+
                 _vsp = getattr(self, "_voice_speed_val", 1.0)
                 if _vsp != 1.0:
                     batch = self._resample_pcm(batch, _vsp)
 
-                # Drive the HUD waveform from the assistant's own voice.
                 try:
                     _pcm = np.frombuffer(batch, dtype=np.int16)
                     _lvl = _pcm_level(_pcm)
                     self.ui.set_audio_level(_lvl)
-                    # Registrar lo que suena para que EchoGuard distinga el eco.
                     self._echo.note_output(_pcm, RECEIVE_SAMPLE_RATE, _lvl)
                 except Exception:
                     pass
@@ -2225,7 +2217,7 @@ class FoxLive:
                 try:
                     await asyncio.to_thread(stream.write, batch)
                 except (RuntimeError, asyncio.CancelledError):
-                    break   # executor shutting down — exit cleanly
+                    break
         except Exception as e:
             print(f"[FOX] ❌ Play: {e}")
             raise

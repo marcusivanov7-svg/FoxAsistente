@@ -32,6 +32,9 @@ from typing import Any, AsyncGenerator, Awaitable, Callable
 
 from core import providers
 from core.permissions import tool_status_kind, TOOL_KIND
+from memory.working_memory import WorkingMemory
+from core.verification_layer import verify_tool_result
+from core.timeout_manager import with_timeout
 
 # tool_executor: async (name, args) -> str
 ToolExecutor = Callable[[str, dict], Awaitable[str]]
@@ -84,6 +87,9 @@ class AgentEngine:
         self.history: list[dict] = []
         # Uso de tokens acumulado de la última corrida (para la barra de contexto).
         self.last_usage: dict[str, int | None] = {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None}
+        
+        # Working Memory local del agente para la sesión
+        self.working_memory = WorkingMemory()
 
     # ── Historial ─────────────────────────────────────────────────────────────
     def add_message(self, role: str, content: str, **extra: Any) -> None:
@@ -92,11 +98,13 @@ class AgentEngine:
     def clear_history(self) -> None:
         self.history = []
         self.last_usage = {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None}
+        self.working_memory.clear()
 
     def load_history(self, history: list[dict]) -> None:
         """Reemplaza el historial (usado al reanudar una sesión guardada)."""
         self.history = [dict(m) for m in (history or [])]
         self.last_usage = {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None}
+        self.working_memory.clear()
 
     def set_tools(self, tools: list[dict]) -> None:
         self.tools = tools
@@ -199,6 +207,10 @@ class AgentEngine:
         system_content = self.system_prompt
         if extra_context:
             system_content = system_content.rstrip() + "\n\n" + extra_context
+            
+        wm_context = self.working_memory.get_context_string()
+        if wm_context:
+            system_content = system_content.rstrip() + "\n\n" + wm_context
 
         total_usage: dict[str, int | None] = {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None}
         final_content = ""
@@ -235,6 +247,8 @@ class AgentEngine:
                 elif et == "done":
                     content = ev.get("content", content)
                     thinking = ev.get("thinking", thinking)
+                    if thinking:
+                        self.working_memory.add_thought(thinking)
                     tool_calls = ev.get("tool_calls", tool_calls)
                     usage = ev.get("usage") or {}
                     for k in total_usage:
@@ -288,9 +302,13 @@ class AgentEngine:
 
             async def _run_one(name: str, args: dict) -> str:
                 try:
-                    return str(await self._tool_executor(name, args))
+                    # Ejecutar con límite de tiempo
+                    raw_result = str(await with_timeout(name, self._tool_executor(name, args)))
+                    # Pasar por la capa de verificación
+                    return verify_tool_result(name, args, raw_result)
                 except Exception as e:  # noqa: BLE001
-                    return f"Error al ejecutar {name}: {e}"
+                    self.working_memory.log_error(name, str(e))
+                    return verify_tool_result(name, args, f"Error al ejecutar {name}: {e}")
 
             if parallel and len(calls_info) > 1:
                 results = await asyncio.gather(*(_run_one(n, a) for n, a, _c in calls_info))

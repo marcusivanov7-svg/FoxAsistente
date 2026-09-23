@@ -635,6 +635,25 @@ function renderTraj(){
   const s=sessions[state.cur]||{traj:[]};
   $('#trajList').innerHTML=s.traj.map(e=>'<div class="traj-entry"><span class="te-time">'+e.t+'</span><span class="te-badge '+e.k+'">'+e.k+'</span><span class="te-text">'+(e.k==='ASSISTANT'&&e.x.length>90?'<em>'+esc(e.x)+'</em>':esc(e.x))+'</span></div>').join('');
 }
+function appendTraj(e) {
+  const s = sessions[state.cur];
+  if(s) s.traj.push(e);
+  const div = document.createElement('div');
+  div.className = 'traj-entry';
+  div.innerHTML = '<span class="te-time">'+e.t+'</span><span class="te-badge '+e.k+'">'+e.k+'</span><span class="te-text">'+(e.k==='ASSISTANT'&&e.x.length>90?'<em>'+esc(e.x)+'</em>':esc(e.x))+'</span>';
+  $('#trajList').appendChild(div);
+}
+
+let scrollAF = null;
+function requestScrollBottom() {
+  if (scrollAF) return;
+  scrollAF = requestAnimationFrame(() => {
+    const el = $('#msgScroll');
+    if(el) el.scrollTop = 1e6;
+    scrollAF = null;
+  });
+}
+
 const TL_COLORS=['#a78bfa','#ff7a2f','#3fb950','#58a6ff','#8b949e','#e3b341'];
 (function buildTL(){
   const mk=(n,gap)=>{let h='';for(let i=0;i<n;i++){const w=(Math.sin(i*7.3)*0.5+0.9)*4;h+='<span class="tl-seg" style="flex:'+w.toFixed(2)+' 1 0;background:'+TL_COLORS[i%TL_COLORS.length]+(gap?';margin-right:6px':'')+'"></span>'}return h};
@@ -790,7 +809,7 @@ function handleStreamEvent(data) {
       $('#msgList').appendChild(art);
     }
     saveCurChat();
-    $('#msgScroll').scrollTop = 1e6;
+    requestScrollBottom();
     return;
   }
   
@@ -830,7 +849,7 @@ function handleStreamEvent(data) {
       </div>
     </div>`;
     $('#msgList').appendChild(art);
-    $('#msgScroll').scrollTop = 1e6;
+    requestScrollBottom();
     
     art.querySelector('.btn-approve-plan').onclick = () => {
       art.style.opacity = '0.6';
@@ -841,29 +860,33 @@ function handleStreamEvent(data) {
       art.remove();
       toast('Plan rechazado', '❌');
     };
-  } else if (data.type === 'thinking') {
-    const t = document.createElement('div');
-    t.style = 'color: var(--faint); font-style: italic; margin-bottom: 8px; font-size: 13px;';
-    t.textContent = '🤔 Pensando: ' + (data.content || '');
-    currentAssistantBody.appendChild(t);
-
-  } else if (data.type === 'tool_start') {
-    const tb = document.createElement('div');
-    tb.className = 'tool-container';
-    tb.innerHTML = `<div class="codeblock" style="margin: 6px 0;"><div class="cb-head"><span>⚙️ Tool: ${esc(data.tool_name || '')}</span></div><pre><code>${esc(data.args || '')}</code></pre></div>`;
-    currentAssistantBody.appendChild(tb);
-
-    const s = sessions[state.cur];
-    if (s) {
-      s.traj.push({t: nowT(), k: 'TOOL', x: data.tool_name});
-      renderTraj();
+  } else if (data.type === 'thinking' || data.type === 'tool_start' || data.type === 'tool_result') {
+    let logsDetails = currentAssistantBody.querySelector('details.internal-logs');
+    if (!logsDetails) {
+      logsDetails = document.createElement('details');
+      logsDetails.className = 'internal-logs';
+      logsDetails.innerHTML = '<summary style="cursor:pointer; color:var(--muted); font-size:12px; margin-bottom:8px;">⚙️ Generando respuesta... (Clic para ver detalles)</summary><div class="logs-body" style="padding-left:12px; border-left:2px solid var(--border); font-size:12px;"></div>';
+      currentAssistantBody.appendChild(logsDetails);
     }
+    const logsBody = logsDetails.querySelector('.logs-body');
 
-  } else if (data.type === 'tool_result') {
-    const tb = document.createElement('div');
-    tb.className = 'tool-container';
-    tb.innerHTML = `<div class="codeblock" style="margin: 6px 0;"><div class="cb-head"><span>✅ Tool Result</span></div><pre><code style="color:var(--green)">${esc(data.result || '')}</code></pre></div>`;
-    currentAssistantBody.appendChild(tb);
+    if (data.type === 'thinking') {
+      const t = document.createElement('div');
+      t.style = 'color: var(--faint); font-style: italic; margin-bottom: 8px;';
+      t.textContent = '🤔 Pensando: ' + (data.content || '');
+      logsBody.appendChild(t);
+    } else if (data.type === 'tool_start') {
+      const tb = document.createElement('div');
+      tb.className = 'tool-container';
+      tb.innerHTML = `<div class="codeblock" style="margin: 6px 0;"><div class="cb-head"><span>⚙️ Tool: ${esc(data.tool_name || '')}</span></div><pre><code>${esc(data.args || '')}</code></pre></div>`;
+      logsBody.appendChild(tb);
+      appendTraj({t: nowT(), k: 'TOOL', x: data.tool_name || 'unknown'});
+    } else if (data.type === 'tool_result') {
+      const tb = document.createElement('div');
+      tb.className = 'tool-container';
+      tb.innerHTML = `<div class="codeblock" style="margin: 6px 0;"><div class="cb-head"><span>✅ Tool Result</span></div><pre><code style="color:var(--green)">${esc(data.result || '')}</code></pre></div>`;
+      logsBody.appendChild(tb);
+    }
 
   } else if (data.type === 'done') {
     const foot = document.createElement('div');
@@ -871,17 +894,13 @@ function handleStreamEvent(data) {
     foot.innerHTML = '<div class="reactions"><button class="icon-btn r-link"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button><button class="icon-btn r-up"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M7 22V11l5-8a3 3 0 0 1 3 3v5h6l-2 11z"/></svg></button><button class="icon-btn r-down"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M17 2v11l-5 8a3 3 0 0 1-3-3v-5H3l2-11z"/></svg></button></div><span class="stat">🕐 '+nowT()+'</span>';
     currentAssistantBody.appendChild(foot);
     
-    const s = sessions[state.cur];
-    if (s) {
-      s.traj.push({t: nowT(), k: 'ASSISTANT', x: 'Respuesta completada.'});
-      renderTraj();
-    }
+    appendTraj({t: nowT(), k: 'ASSISTANT', x: 'Respuesta completada.'});
     saveCurChat();
     currentAssistantMessage = null;
     currentAssistantBody = null;
   }
   
-  $('#msgScroll').scrollTop = 1e6;
+  requestScrollBottom();
 }
 
 function sendToBackend(text, sidOverride=null) {
@@ -944,8 +963,8 @@ function pushUser(text){
     fDiv.textContent = '📎 ' + attachedFiles.map(f=>f.name).join(', ');
     u.querySelector('.bubble').appendChild(fDiv);
   }
-  $('#msgList').appendChild(u); $('#msgScroll').scrollTop=1e6;
-  const s=sessions[state.cur]; if(s){s.traj.push({t:nowT(),k:'USER',x:text});renderTraj()}
+  $('#msgList').appendChild(u); requestScrollBottom();
+  appendTraj({t:nowT(),k:'USER',x:text});
 }
 
 initComposer($('#compSession'),text=>{pushUser(text);saveCurChat();sendToBackend(text)});
@@ -1073,15 +1092,18 @@ $('#provList').addEventListener('click', async e=>{
     const pid = row.querySelector('.c-id').value.trim();
     const name = row.querySelector('.c-name').value.trim();
     const url = row.querySelector('.c-url').value.trim();
-    const model = row.querySelector('.c-model').value.trim();
+    let model = row.querySelector('.c-model').value.trim();
     const key = row.querySelector('.c-key').value.trim();
-    if(!pid || !name || !url || !model) {
-      toast('Faltan datos', '⚠️'); return;
+    if(!name || !url) {
+      toast('Faltan datos obligatorios (Nombre y URL)', '❌'); return;
     }
+    // Si no escribe modelo (como para FreeLLMAPI), enviamos "auto" o lista vacía
+    const modelsList = model ? [model] : ["auto"];
+    
     const res = await fetch('/api/provider', {
       method: 'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({id: pid, name: name, base_url: url, api_key: key, model: model})
+      body: JSON.stringify({id: pid, name: name, url: url, api_key: key, models: modelsList})
     });
     const data = await res.json();
     if(data.ok) {
@@ -1113,7 +1135,7 @@ function addProv(custom){
     <input type="text" class="c-id" placeholder="ID (ej: local_ollama)" value="${id}">
     <input type="text" class="c-name" placeholder="Nombre (ej: Mi Servidor Local)">
     <input type="text" class="c-url" placeholder="Base URL (ej: http://localhost:11434/v1)">
-    <input type="text" class="c-model" placeholder="Model ID (ej: llama3)">
+    <input type="text" class="c-model" placeholder="Model ID (ej: llama3) [Opcional]">
     <input type="password" class="c-key" placeholder="API Key (opcional)">
     <button class="btn-sm p-save-custom" style="align-self:flex-end">Guardar Proveedor</button>
   </div>`;

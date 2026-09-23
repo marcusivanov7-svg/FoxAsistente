@@ -25,7 +25,18 @@ class WorkspaceStore:
         for ws_path in self.base_dir.iterdir():
             if ws_path.is_dir():
                 sessions = []
+                # Leer metadata del workspace (ej: rutas del disco)
+                meta = {}
+                meta_file = ws_path / "workspace.json"
+                if meta_file.exists():
+                    try:
+                        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
+                
                 for sess_file in ws_path.glob("*.json"):
+                    if sess_file.name == "workspace.json":
+                        continue
                     try:
                         data = json.loads(sess_file.read_text(encoding="utf-8"))
                         sessions.append({
@@ -40,7 +51,8 @@ class WorkspaceStore:
                 workspaces.append({
                     "id": ws_path.name,
                     "name": ws_path.name,
-                    "sessions": sessions
+                    "sessions": sessions,
+                    "folders": meta.get("folders", [])
                 })
         
         if not workspaces:
@@ -49,11 +61,30 @@ class WorkspaceStore:
             workspaces.append({
                 "id": "default",
                 "name": "default",
-                "sessions": []
+                "sessions": [],
+                "folders": []
             })
             
         workspaces.sort(key=lambda x: x["name"])
         return workspaces
+        
+    def set_workspace_folders(self, workspace_name: str, folders: list[str]) -> None:
+        """Guarda las rutas absolutas asociadas a un workspace."""
+        if not workspace_name:
+            return
+        ws_path = self.base_dir / workspace_name
+        ws_path.mkdir(parents=True, exist_ok=True)
+        meta_file = ws_path / "workspace.json"
+        
+        meta = {}
+        if meta_file.exists():
+            try:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        
+        meta["folders"] = folders
+        meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _get_session_path(self, sid: str, workspace_name: str = None) -> Path | None:
         if workspace_name:

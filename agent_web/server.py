@@ -378,13 +378,28 @@ class AgentWebServer:
                     text = (req.get("text") or "").strip()
                     if not text:
                         continue
-                    self.sandbox.set_mode(req.get("sandbox") or "full")
-                    self.sandbox.set_roots(req.get("folders") or [])
-
                     ws_name = req.get("workspace", "default")
-                    sid = req.get("session_id") or self._store.active_session
+                    folders = req.get("folders") or []
+                    if folders:
+                        self._store.set_workspace_folders(ws_name, folders)
+                    else:
+                        for w in self._store.list_workspaces():
+                            if w["id"] == ws_name:
+                                folders = w.get("folders") or []
+                                break
+                    self.sandbox.set_mode(req.get("sandbox") or "full")
+                    self.sandbox.set_roots(folders)
+                    
+                    req_sid = req.get("session_id")
+                    if req_sid and req_sid != self._store.active_session:
+                        history = self._store.load_session(req_sid) or []
+                        self.agent.load_history(history)
+                        self._store.active_session = req_sid
+                    
+                    sid = req_sid or self._store.active_session
                     if not sid:
                         sid = self._store.create_session(workspace_name=ws_name)
+                        self.agent.clear_history()
 
                     provider = req.get("provider") or None
                     model = req.get("model") or None
@@ -421,13 +436,12 @@ class AgentWebServer:
                             "model": model,
                             "effort": effort,
                             "sandbox": req.get("sandbox") or "full",
-                            "folders": req.get("folders") or [],
+                            "folders": folders,
                         }
                         await websocket.send_json({"type": "plan", "plan": plan, "session_id": sid})
                         continue
 
                     ctx_lines = []
-                    folders = req.get("folders") or []
                     if folders:
                         paths = ", ".join(folders)
                         ctx_lines.append(f"\n[INFO DE ENTORNO] El usuario te ha dado acceso de lectura/escritura a estas carpetas: {paths}.")
