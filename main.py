@@ -1,5 +1,16 @@
 import platform as _platform
 import subprocess as _subprocess
+import warnings
+warnings.filterwarnings("ignore", message="Direct use of automatic function calling")
+import signal
+import sys
+
+def signal_handler(sig, frame):
+    print("\n[FOX] Cerrando gracefully...")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 # ── OpenCV log silencing ─────────────────────────────────────────────────────
 # NVIDIA Broadcast's virtual camera + OpenCV's DSHOW backend print noisy

@@ -393,7 +393,7 @@ def rename_file(path: str, name: str = "", new_name: str = "") -> str:
         return f"Could not rename: {e}"
 
 
-def read_file(path: str, name: str = "", max_chars: int = 4000) -> str:
+def read_file(path: str, name: str = "", offset: int = 0, limit: int = 12000) -> str:
     try:
         base   = _resolve_path(path)
         target = (base / name) if name else base
@@ -405,12 +405,20 @@ def read_file(path: str, name: str = "", max_chars: int = 4000) -> str:
             return f"Not a file: {target.name}"
 
         content = target.read_text(encoding="utf-8", errors="ignore")
-        if len(content) > max_chars:
-            content = content[:max_chars] + f"\n\n[Truncated — {len(content)} total chars]"
-        return content
+        total = len(content)
+
+        if total <= limit and offset == 0:
+            return content
+
+        end = min(offset + limit, total)
+        chunk = content[offset:end]
+        meta = f"[File: {target.name} | Total: {total} chars | Showing: {offset}-{end}]"
+        if end < total:
+            meta += f" | Use offset={end} to read the rest"
+        return meta + "\n\n" + chunk
 
     except Exception as e:
-        return f"Could not read file: {e}"
+        return f"Could not read file: {e}" 
 
 
 def write_file(path: str, name: str = "", content: str = "",
@@ -682,7 +690,12 @@ def file_controller(
             return rename_file(path, name=name, new_name=params.get("new_name", ""))
 
         elif action == "read":
-            return read_file(path, name=name)
+            return read_file(
+                path,
+                name=name,
+                offset=int(params.get("offset", 0)),
+                limit=min(int(params.get("limit", 12000)), 20000),
+            )
 
         elif action == "write":
             return write_file(
@@ -723,34 +736,51 @@ def file_controller(
 TOOL = {
     "name": 'file_controller',
     "description": 'Manages files and folders: list, create, delete, move, copy, rename, read, write, find, disk usage.',
-    "parameters": {   'type': 'OBJECT',
-        'properties': {   'action': {   'type': 'STRING',
-                                        'description': 'list | create_file | '
-                                                       'create_folder | delete | '
-                                                       'move | copy | rename | '
-                                                       'read | write | find | '
-                                                       'largest | disk_usage | '
-                                                       'organize_desktop | info'},
-                          'path': {   'type': 'STRING',
-                                      'description': 'File/folder path or '
-                                                     'shortcut: desktop, '
-                                                     'downloads, documents, home'},
-                          'destination': {   'type': 'STRING',
-                                             'description': 'Destination path for '
-                                                            'move/copy'},
-                          'new_name': {   'type': 'STRING',
-                                          'description': 'New name for rename'},
-                          'content': {   'type': 'STRING',
-                                         'description': 'Content for '
-                                                        'create_file/write'},
-                          'name': {   'type': 'STRING',
-                                      'description': 'File name to search for'},
-                          'extension': {   'type': 'STRING',
-                                           'description': 'File extension to '
-                                                          'search (e.g. .pdf)'},
-                          'count': {   'type': 'INTEGER',
-                                       'description': 'Number of results for '
-                                                      'largest'}},
-        'required': ['action']},
+    "parameters": {
+        'type': 'OBJECT',
+        'properties': {
+            'action': {
+                'type': 'STRING',
+                'description': 'list | create_file | create_folder | delete | move | copy | rename | read | write | find | largest | disk_usage | organize_desktop | info'
+            },
+            'path': {
+                'type': 'STRING',
+                'description': 'File/folder path or shortcut: desktop, downloads, documents, home'
+            },
+            'name': {
+                'type': 'STRING',
+                'description': 'File name (for read/write/find)'
+            },
+            'offset': {
+                'type': 'INTEGER',
+                'description': 'Start char position for reading large files (default 0). Use the offset suggested in the truncation message.'
+            },
+            'limit': {
+                'type': 'INTEGER',
+                'description': 'Chars to read (default 12000)'
+            },
+            'destination': {
+                'type': 'STRING',
+                'description': 'Destination path for move/copy'
+            },
+            'new_name': {
+                'type': 'STRING',
+                'description': 'New name for rename'
+            },
+            'content': {
+                'type': 'STRING',
+                'description': 'Content for create_file/write'
+            },
+            'extension': {
+                'type': 'STRING',
+                'description': 'File extension to search (e.g. .pdf)'
+            },
+            'count': {
+                'type': 'INTEGER',
+                'description': 'Number of results for largest'
+            }
+        },
+        'required': ['action']
+    },
     "handler": file_controller,
 }

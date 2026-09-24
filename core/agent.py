@@ -70,8 +70,8 @@ class AgentEngine:
         *,
         tools: list[dict] | None = None,
         system_prompt: str | None = None,
-        max_steps: int = 8,
-        default_timeout: int = 180,
+        max_steps: int = 20,
+        default_timeout: int = 600,
         context_limit: int = 128000,
         compact_threshold: float = 0.75,
     ) -> None:
@@ -176,7 +176,7 @@ class AgentEngine:
                 break
             yield ev
 
-    # ── Loop principal ────────────────────────────────────────────────────────
+        # ── Loop principal ────────────────────────────────────────────────────────
     async def run(
         self,
         user_text: str,
@@ -234,29 +234,81 @@ class AgentEngine:
                     timeout=timeout,
                 )
 
-            async for ev in self._run_blocking_stream(_factory):
-                et = ev.get("type")
-                if et == "delta":
-                    content += ev.get("text", "")
-                    yield ev
-                elif et == "thinking":
-                    thinking += ev.get("text", "")
-                    yield ev
-                elif et == "tool_calls":
-                    tool_calls = ev.get("tool_calls") or []
-                elif et == "done":
-                    content = ev.get("content", content)
-                    thinking = ev.get("thinking", thinking)
-                    if thinking:
-                        self.working_memory.add_thought(thinking)
-                    tool_calls = ev.get("tool_calls", tool_calls)
-                    usage = ev.get("usage") or {}
-                    for k in total_usage:
-                        if usage.get(k) is not None:
-                            total_usage[k] = usage.get(k)
-                    yield {"type": "usage", "usage": usage}
-                elif et == "error":
-                    yield ev
+            # ── RETRY CON BACKOFF PARA ERRORES 503 ──────────────────────────
+            max_retries = 3
+            retry_count = 0
+            provider_error = None
+            
+            while retry_count <= max_retries:
+                try:
+                    async for ev in self._run_blocking_stream(_factory):
+                        et = ev.get("type")
+                        if et == "delta":
+                            content += ev.get("text", "")
+                            yield ev
+                        elif et == "thinking":
+                            thinking += ev.get("text", "")
+                            yield ev
+                        elif et == "tool_calls":
+                            tool_calls = ev.get("tool_calls") or []
+                        elif et == "done":
+                            content = ev.get("content", content)
+                            thinking = ev.get("thinking", thinking)
+                            if thinking:
+                                self.working_memory.add_thought(thinking)
+                            tool_calls = ev.get("tool_calls", tool_calls)
+                            usage = ev.get("usage") or {}
+                            for k in total_usage:
+                                if usage.get(k) is not None:
+                                    total_usage[k] = usage.get(k)
+                            yield {"type": "usage", "usage": usage}
+                        elif et == "error":
+                            error_msg = ev.get("error", "")
+                            # Detectar errores 503 (saturación del proveedor)
+                            if "503" in error_msg or "UNAVAILABLE" in error_msg or "high demand" in error_msg.lower() or "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+                                provider_error = error_msg
+                                if retry_count < max_retries:
+                                    wait_time = 2 ** retry_count  # 1s, 2s, 4s
+                                    yield {
+                                        "type": "status",
+                                        "status": "thinking",
+                                        "label": f"⚠️ Proveedor saturado, reintentando en {wait_time}s..."
+                                    }
+                                    await asyncio.sleep(wait_time)
+                                    retry_count += 1
+                                    # Resetear estado para el reintento
+                                    content = ""
+                                    thinking = ""
+                                    tool_calls = []
+                                    continue  # Reintentar el mismo step
+                                else:
+                                    # Se agotaron los reintentos
+                                    yield ev
+                                    return
+                            else:
+                                # Error diferente a 503, propagar inmediatamente
+                                yield ev
+                                return
+                    
+                    # Si llegamos acá sin error, salir del loop de retry
+                    break
+                    
+                except Exception as e:
+                    # Capturar excepciones del stream
+                    error_msg = str(e)
+                    if "503" in error_msg or "UNAVAILABLE" in error_msg or "high demand" in error_msg.lower() or "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+                        if retry_count < max_retries:
+                            wait_time = 2 ** retry_count
+                            yield {
+                                "type": "status",
+                                "status": "thinking",
+                                "label": f"⚠️ Proveedor saturado, reintentando en {wait_time}s..."
+                            }
+                            await asyncio.sleep(wait_time)
+                            retry_count += 1
+                            continue
+                    # Si no es 503 o se agotaron los reintentos
+                    yield {"type": "error", "error": error_msg}
                     return
 
             if not tool_calls:

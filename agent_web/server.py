@@ -5,30 +5,13 @@ Expone el AgentEngine existente a través de una web UI (HTML/JS/CSS) y un
 WebSocket para streaming, más persistencia de sesiones, feedback y plan mode.
 Corre dentro del mismo event-loop de Fox (uvicorn como tarea asyncio),
 compartiendo el motor agente, el sandbox y las herramientas sin duplicar nada.
-
-Rutas REST:
-    GET    /                     → index.html (la SPA)
-    GET    /app.js               → lógica de cliente
-    GET    /style.css            → tema oscuro
-    GET    /api/meta             → proveedores, modelos, niveles, modos
-    GET    /api/sessions         → listar sesiones
-    POST   /api/sessions         → crear sesión
-    GET    /api/sessions/{id}    → cargar historial de una sesión
-    DELETE /api/sessions/{id}    → borrar una sesión
-
-WebSocket /ws/agent (mensajes JSON):
-    {action:"send", text, provider, model, effort, sandbox, folders, session_id, plan}
-    {action:"approve_plan"}   → ejecuta el plan pendiente con herramientas
-    {action:"reject_plan"}    → descarta el plan pendiente
-    {action:"feedback", rating, content, session_id}
-    {action:"new"} | {action:"load", session_id} | {action:"delete", session_id}
-    {action:"list"} | {action:"clear"} | {action:"ping"}
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -129,14 +112,11 @@ class AgentWebServer:
 
         @app.get("/api/models/{pid}")
         async def get_models(pid: str):
-            import asyncio
-            from core import providers
             models = await asyncio.to_thread(providers.fetch_remote_models, pid)
             return JSONResponse({"models": models})
 
         @app.post("/api/key")
         async def save_key(request: Request):
-            """Guarda la API key de un proveedor en config/api_keys.json."""
             try:
                 data = await request.json()
             except Exception:
@@ -148,7 +128,6 @@ class AgentWebServer:
 
         @app.post("/api/provider")
         async def add_provider(request: Request):
-            """Agrega un proveedor personalizado OpenAI-compatible."""
             try:
                 data = await request.json()
             except Exception:
@@ -169,13 +148,11 @@ class AgentWebServer:
 
         @app.get("/api/fs/pick")
         async def fs_pick():
-            """Abre un diálogo nativo para seleccionar una carpeta y devuelve la ruta."""
             def _pick():
                 import tkinter as tk
                 from tkinter import filedialog
                 root = tk.Tk()
                 root.withdraw()
-                # Ponemos la ventana al frente
                 root.attributes('-topmost', True)
                 folder = filedialog.askdirectory(title="Seleccionar carpeta para Fox")
                 root.destroy()
@@ -185,7 +162,6 @@ class AgentWebServer:
 
         @app.get("/api/fs/tree")
         async def fs_tree(path: str):
-            """Devuelve el árbol de archivos de un directorio (1 nivel o recursivo ligero)."""
             def _scan(p: Path, max_depth=2, current_depth=0):
                 if current_depth > max_depth:
                     return None
@@ -202,7 +178,7 @@ class AgentWebServer:
                     return result
                 except Exception:
                     return None
-            
+
             p = Path(path)
             if not p.is_dir():
                 return JSONResponse({"tree": []})
@@ -240,23 +216,39 @@ class AgentWebServer:
         @app.websocket("/ws/agent")
         async def ws(websocket: WebSocket):
             await websocket.accept()
+
+            # ── Helper: envío seguro que propaga WebSocketDisconnect ────────
+            async def safe_send(data: dict) -> None:
+                """Envía un mensaje al cliente. Si el cliente ya se desconectó,
+                lanza WebSocketDisconnect para romper limpiamente el loop."""
+                try:
+                    await websocket.send_json(data)
+                except WebSocketDisconnect:
+                    raise
+                except Exception as e:
+                    # Starlette lanza ClientDisconnected internamente a veces
+                    if "disconnect" in str(e).lower() or "closed" in str(e).lower():
+                        raise WebSocketDisconnect(code=1006)
+                    print(f"[WS] Error enviando: {e}")
+                    raise
+
             try:
                 while True:
                     raw = await websocket.receive_text()
                     try:
                         req = json.loads(raw)
                     except json.JSONDecodeError:
-                        await websocket.send_json({"type": "error", "error": "JSON inválido"})
+                        await safe_send({"type": "error", "error": "JSON inválido"})
                         continue
 
                     action = req.get("action", "send")
 
                     if action == "ping":
-                        await websocket.send_json({"type": "pong"})
+                        await safe_send({"type": "pong"})
                         continue
 
                     if action == "get_workspaces" or action == "list":
-                        await websocket.send_json({
+                        await safe_send({
                             "type": "workspaces",
                             "workspaces": self._store.list_workspaces(),
                             "active": self._store.active_session,
@@ -268,7 +260,7 @@ class AgentWebServer:
                         sid = self._store.create_session(workspace_name=ws_name)
                         self.agent.clear_history()
                         self._pending_plan = None
-                        await websocket.send_json({
+                        await safe_send({
                             "type": "session_new",
                             "session_id": sid,
                             "workspaces": self._store.list_workspaces(),
@@ -280,7 +272,7 @@ class AgentWebServer:
                         history = self._store.load_session(sid) if sid else []
                         self.agent.load_history(history)
                         self._pending_plan = None
-                        await websocket.send_json({
+                        await safe_send({
                             "type": "history",
                             "session_id": sid,
                             "messages": history,
@@ -289,7 +281,7 @@ class AgentWebServer:
 
                     if action == "delete":
                         self._store.delete_session(req.get("session_id"))
-                        await websocket.send_json({
+                        await safe_send({
                             "type": "workspaces",
                             "workspaces": self._store.list_workspaces(),
                             "active": self._store.active_session,
@@ -299,15 +291,13 @@ class AgentWebServer:
                     if action == "clear":
                         self.agent.clear_history()
                         self._pending_plan = None
-                        await websocket.send_json({"type": "cleared"})
+                        await safe_send({"type": "cleared"})
                         continue
 
                     if action == "subagent":
-                        # Corre un agente INDEPENDIENTE (historial propio) para una
-                        # subtarea, en paralelo a la conversación principal.
                         task = (req.get("task") or "").strip()
                         if not task:
-                            await websocket.send_json({"type": "error", "error": "Falta la tarea del subagente."})
+                            await safe_send({"type": "error", "error": "Falta la tarea del subagente."})
                             continue
                         sub = AgentEngine(
                             tool_executor=self.agent._tool_executor,
@@ -319,35 +309,39 @@ class AgentWebServer:
                             max_steps=4,
                             context_limit=self.agent.context_limit,
                         )
-                        await websocket.send_json({"type": "subagent_start", "task": task})
-                        async with self._lock:
-                            async for ev in sub.run(
-                                task,
-                                provider=req.get("provider"),
-                                model=req.get("model"),
-                                effort=req.get("effort") or "off",
-                            ):
-                                tagged = dict(ev)
-                                tagged["type"] = "subagent_" + ev["type"]
-                                await websocket.send_json(tagged)
-                        await websocket.send_json({"type": "subagent_done"})
+                        await safe_send({"type": "subagent_start", "task": task})
+                        try:
+                            async with self._lock:
+                                async for ev in sub.run(
+                                    task,
+                                    provider=req.get("provider"),
+                                    model=req.get("model"),
+                                    effort=req.get("effort") or "off",
+                                ):
+                                    tagged = dict(ev)
+                                    tagged["type"] = "subagent_" + ev["type"]
+                                    await safe_send(tagged)
+                            await safe_send({"type": "subagent_done"})
+                        except WebSocketDisconnect:
+                            print("[WS] Cliente desconectado durante subagente")
+                            return
                         continue
 
                     if action == "feedback":
                         self._record_feedback(req)
-                        await websocket.send_json({"type": "feedback_saved", "rating": req.get("rating")})
+                        await safe_send({"type": "feedback_saved", "rating": req.get("rating")})
                         continue
 
                     if action == "reject_plan":
                         self._pending_plan = None
-                        await websocket.send_json({"type": "plan_rejected"})
+                        await safe_send({"type": "plan_rejected"})
                         continue
 
                     if action == "approve_plan":
                         pending = self._pending_plan
                         self._pending_plan = None
                         if not pending:
-                            await websocket.send_json({"type": "error", "error": "No hay plan pendiente."})
+                            await safe_send({"type": "error", "error": "No hay plan pendiente."})
                             continue
                         sid = pending.get("session_id") or self._store.active_session
                         ws_name = pending.get("workspace", "default")
@@ -355,23 +349,27 @@ class AgentWebServer:
                             sid = self._store.create_session(workspace_name=ws_name)
                         self.sandbox.set_mode(pending.get("sandbox") or "full")
                         self.sandbox.set_roots(pending.get("folders") or [])
-                        await websocket.send_json({"type": "plan_approved", "plan": pending.get("plan", "")})
-                        async with self._lock:
-                            async for ev in self.agent.run(
-                                pending.get("task", ""),
-                                provider=pending.get("provider"),
-                                model=pending.get("model"),
-                                effort=pending.get("effort") or "off",
-                                extra_context="Plan aprobado por el usuario:\n" + pending.get("plan", "") + ("\n\n[INFO DE ENTORNO] Tienes acceso completo de lectura y escritura a las siguientes carpetas del proyecto: " + ", ".join(pending.get("folders", [])) if pending.get("folders") else ""),
-                            ):
-                                await websocket.send_json(ev)
-                        self._store.save_session(sid, ws_name, self.agent.history, title_from_history(self.agent.history))
-                        await websocket.send_json({
-                            "type": "session_saved",
-                            "session_id": sid,
-                            "title": title_from_history(self.agent.history),
-                            "workspaces": self._store.list_workspaces(),
-                        })
+                        await safe_send({"type": "plan_approved", "plan": pending.get("plan", "")})
+                        try:
+                            async with self._lock:
+                                async for ev in self.agent.run(
+                                    pending.get("task", ""),
+                                    provider=pending.get("provider"),
+                                    model=pending.get("model"),
+                                    effort=pending.get("effort") or "off",
+                                    extra_context="Plan aprobado por el usuario:\n" + pending.get("plan", "") + ("\n\n[INFO DE ENTORNO] Tienes acceso completo de lectura y escritura a las siguientes carpetas del proyecto: " + ", ".join(pending.get("folders", [])) if pending.get("folders") else ""),
+                                ):
+                                    await safe_send(ev)
+                            self._store.save_session(sid, ws_name, self.agent.history, title_from_history(self.agent.history))
+                            await safe_send({
+                                "type": "session_saved",
+                                "session_id": sid,
+                                "title": title_from_history(self.agent.history),
+                                "workspaces": self._store.list_workspaces(),
+                            })
+                        except WebSocketDisconnect:
+                            print("[WS] Cliente desconectado durante approve_plan")
+                            return
                         continue
 
                     # ── action == "send" ────────────────────────────────────
@@ -379,27 +377,40 @@ class AgentWebServer:
                     if not text:
                         continue
                     ws_name = req.get("workspace", "default")
-                    folders = req.get("folders") or []
-                    if folders:
-                        self._store.set_workspace_folders(ws_name, folders)
-                    else:
-                        for w in self._store.list_workspaces():
-                            if w["id"] == ws_name:
-                                folders = w.get("folders") or []
-                                break
-                    self.sandbox.set_mode(req.get("sandbox") or "full")
-                    self.sandbox.set_roots(folders)
-                    
+                    req_folders = req.get("folders") or []
+
                     req_sid = req.get("session_id")
-                    if req_sid and req_sid != self._store.active_session:
-                        history = self._store.load_session(req_sid) or []
-                        self.agent.load_history(history)
-                        self._store.active_session = req_sid
-                    
-                    sid = req_sid or self._store.active_session
-                    if not sid:
+                    if req_sid is None:
                         sid = self._store.create_session(workspace_name=ws_name)
                         self.agent.clear_history()
+                        self._pending_plan = None
+                    else:
+                        if req_sid != self._store.active_session:
+                            history = self._store.load_session(req_sid) or []
+                            self.agent.load_history(history)
+                            self._store.active_session = req_sid
+                        sid = req_sid
+
+                    if req_folders:
+                        self._store.set_session_folders(sid, req_folders)
+                        folders = req_folders
+                    else:
+                        folders = self._store.get_session_folders(sid)
+
+                    self.sandbox.set_mode(req.get("sandbox") or "full")
+                    self.sandbox.set_roots(folders)
+
+                    if req_sid is None:
+                        try:
+                            await safe_send({
+                                "type": "session_saved",
+                                "session_id": sid,
+                                "title": (text[:40] + "…") if len(text) > 40 else text,
+                                "workspaces": self._store.list_workspaces(),
+                            })
+                        except WebSocketDisconnect:
+                            print("[WS] Cliente desconectado antes de confirmar sesión nueva")
+                            return
 
                     provider = req.get("provider") or None
                     model = req.get("model") or None
@@ -420,12 +431,14 @@ class AgentWebServer:
                             except Exception:
                                 text += f"\n[Archivo adjunto (binario/no texto): {f.get('name')} ({f.get('type')})]"
 
-                    # Plan mode: generamos un plan y esperamos aprobación.
                     if req.get("plan"):
                         try:
                             plan = await self._generate_plan(text, provider, model, 180)
-                        except Exception as e:  # noqa: BLE001
-                            await websocket.send_json({"type": "error", "error": f"No pude armar el plan: {e}"})
+                        except Exception as e:
+                            try:
+                                await safe_send({"type": "error", "error": f"No pude armar el plan: {e}"})
+                            except WebSocketDisconnect:
+                                return
                             continue
                         self._pending_plan = {
                             "task": text,
@@ -438,7 +451,10 @@ class AgentWebServer:
                             "sandbox": req.get("sandbox") or "full",
                             "folders": folders,
                         }
-                        await websocket.send_json({"type": "plan", "plan": plan, "session_id": sid})
+                        try:
+                            await safe_send({"type": "plan", "plan": plan, "session_id": sid})
+                        except WebSocketDisconnect:
+                            return
                         continue
 
                     ctx_lines = []
@@ -446,11 +462,23 @@ class AgentWebServer:
                         paths = ", ".join(folders)
                         ctx_lines.append(f"\n[INFO DE ENTORNO] El usuario te ha dado acceso de lectura/escritura a estas carpetas: {paths}.")
                         ctx_lines.append("Usa tus herramientas (list_dir, view_file, grep_search, find_by_name) para inspeccionarlas. Asume que el usuario se refiere a estos directorios si habla de 'el proyecto' o 'esta carpeta'.")
-                    
+
                     extra_context = "\n".join(ctx_lines)
 
-                    async with self._lock:
+                    if self._lock.locked():
                         try:
+                            await safe_send({
+                                "type": "error",
+                                "error": "El agente está ocupado con otro turno. Esperá a que termine o recargá la página.",
+                            })
+                        except WebSocketDisconnect:
+                            return
+                        continue
+
+                    # ── Ejecutar el agente con manejo robusto de desconexión ──
+                    agent_completed = False
+                    try:
+                        async with self._lock:
                             async for ev in self.agent.run(
                                 text,
                                 provider=provider,
@@ -458,22 +486,42 @@ class AgentWebServer:
                                 effort=effort,
                                 extra_context=extra_context,
                             ):
-                                await websocket.send_json(ev)
-                        except Exception as e:
-                            import traceback
-                            traceback.print_exc()
-                            await websocket.send_json({"type": "error", "error": f"Error del agente: {str(e)}"})
+                                await safe_send(ev)
+                        agent_completed = True
+                    except WebSocketDisconnect:
+                        print(f"[WS] Cliente desconectado durante turno de agente (sid={sid})")
+                        # Guardar historial parcial igual para no perder lo que se generó
+                        if self.agent.history:
+                            try:
+                                self._store.save_session(sid, ws_name, self.agent.history, title_from_history(self.agent.history))
+                            except Exception as e:
+                                print(f"[WS] No se pudo guardar sesión parcial: {e}")
+                        return
+                    except Exception as e:
+                        traceback.print_exc()
+                        try:
+                            await safe_send({"type": "error", "error": f"Error del agente: {str(e)}"})
+                        except WebSocketDisconnect:
+                            return
 
-                    self._store.save_session(sid, ws_name, self.agent.history, title_from_history(self.agent.history))
-                    await websocket.send_json({
-                        "type": "session_saved",
-                        "session_id": sid,
-                        "title": title_from_history(self.agent.history),
-                        "workspaces": self._store.list_workspaces(),
-                    })
+                    if agent_completed:
+                        self._store.save_session(sid, ws_name, self.agent.history, title_from_history(self.agent.history))
+                        try:
+                            await safe_send({
+                                "type": "session_saved",
+                                "session_id": sid,
+                                "title": title_from_history(self.agent.history),
+                                "workspaces": self._store.list_workspaces(),
+                            })
+                        except WebSocketDisconnect:
+                            print(f"[WS] Cliente desconectado antes de confirmar session_saved (sid={sid})")
+                            return
+
             except WebSocketDisconnect:
-                pass
-            except Exception as e:  # noqa: BLE001 — el error va al cliente
+                print("[WS] Conexión WebSocket cerrada (código normal)")
+            except Exception as e:
+                print(f"[WS] Error inesperado en handler WebSocket: {e}")
+                traceback.print_exc()
                 try:
                     await websocket.send_json({"type": "error", "error": str(e)})
                 except Exception:

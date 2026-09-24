@@ -3,6 +3,7 @@
 
 Guarda el historial de cada conversación en un JSON separado por workspace
 (directorio) para que sobrevivan al reinicio y organicen el árbol lateral.
+Si un workspace se queda sin chats, su carpeta se elimina para no acumular.
 """
 from __future__ import annotations
 
@@ -25,7 +26,6 @@ class WorkspaceStore:
         for ws_path in self.base_dir.iterdir():
             if ws_path.is_dir():
                 sessions = []
-                # Leer metadata del workspace (ej: rutas del disco)
                 meta = {}
                 meta_file = ws_path / "workspace.json"
                 if meta_file.exists():
@@ -33,7 +33,7 @@ class WorkspaceStore:
                         meta = json.loads(meta_file.read_text(encoding="utf-8"))
                     except Exception:
                         pass
-                
+
                 for sess_file in ws_path.glob("*.json"):
                     if sess_file.name == "workspace.json":
                         continue
@@ -48,13 +48,15 @@ class WorkspaceStore:
                     except Exception:
                         pass
                 sessions.sort(key=lambda x: x["updated_at"], reverse=True)
+                if not sessions:
+                    continue  # workspace sin chats → no se lista (evita carpetas fantasma)
                 workspaces.append({
                     "id": ws_path.name,
                     "name": ws_path.name,
                     "sessions": sessions,
                     "folders": meta.get("folders", [])
                 })
-        
+
         if not workspaces:
             default_ws = self.base_dir / "default"
             default_ws.mkdir(parents=True, exist_ok=True)
@@ -64,10 +66,10 @@ class WorkspaceStore:
                 "sessions": [],
                 "folders": []
             })
-            
+
         workspaces.sort(key=lambda x: x["name"])
         return workspaces
-        
+
     def set_workspace_folders(self, workspace_name: str, folders: list[str]) -> None:
         """Guarda las rutas absolutas asociadas a un workspace."""
         if not workspace_name:
@@ -75,16 +77,38 @@ class WorkspaceStore:
         ws_path = self.base_dir / workspace_name
         ws_path.mkdir(parents=True, exist_ok=True)
         meta_file = ws_path / "workspace.json"
-        
+
         meta = {}
         if meta_file.exists():
             try:
                 meta = json.loads(meta_file.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        
+
         meta["folders"] = folders
         meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def set_session_folders(self, sid: str, folders: list[str]) -> None:
+        """Guarda las carpetas accesibles SOLO para este chat."""
+        path = self._get_session_path(sid)
+        if not path:
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+        data["folders"] = list(folders or [])
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def get_session_folders(self, sid: str) -> list[str]:
+        path = self._get_session_path(sid)
+        if not path:
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return list(data.get("folders") or [])
+        except Exception:
+            return []
 
     def _get_session_path(self, sid: str, workspace_name: str = None) -> Path | None:
         if workspace_name:
@@ -99,11 +123,10 @@ class WorkspaceStore:
     def create_session(self, workspace_name: str, history: list[dict] = None, title: str = "Nueva conversación", mode: str = "Standard mode") -> str:
         sid = uuid.uuid4().hex[:12]
         now = time.time()
-        # Fallback to default if workspace_name is not provided or empty
         workspace_name = workspace_name or "default"
         ws_path = self.base_dir / workspace_name
         ws_path.mkdir(parents=True, exist_ok=True)
-        
+
         sess_file = ws_path / f"{sid}.json"
         data = {
             "id": sid,
@@ -137,12 +160,12 @@ class WorkspaceStore:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 data = {"id": sid, "created_at": time.time(), "history": []}
-            
+
             data["history"] = list(history or [])
             data["updated_at"] = time.time()
             if title: data["title"] = title
             if mode: data["mode"] = mode
-            
+
             if path.parent.name != workspace_name:
                 new_path = self.base_dir / workspace_name / f"{sid}.json"
                 new_path.parent.mkdir(parents=True, exist_ok=True)
@@ -166,9 +189,14 @@ class WorkspaceStore:
         return []
 
     def delete_session(self, sid: str) -> None:
+        """Borra el chat y, si el workspace queda vacío, también su carpeta."""
         path = self._get_session_path(sid)
         if path:
+            ws_dir = path.parent
             path.unlink(missing_ok=True)
+            restantes = [p for p in ws_dir.glob("*.json") if p.name != "workspace.json"]
+            if not restantes:
+                shutil.rmtree(ws_dir, ignore_errors=True)
         if self.active_session == sid:
             self.active_session = None
 
