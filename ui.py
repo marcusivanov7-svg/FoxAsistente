@@ -3023,9 +3023,14 @@ class FoxConfigOverlay(_HudOverlay):
         page, lay = self._tab_page()
 
         #  Proveedor activo para tareas delegadas 
-        desde = _import_specialist_llm()
+        try:
+            from core import providers
+            all_provs = providers.list_providers()
+        except Exception:
+            all_provs = []
+
         prov_activo = (cfg.get("specialist_provider") or "gemini").lower()
-        if prov_activo not in desde.PROVIDERS:
+        if not any(p["id"] == prov_activo for p in all_provs):
             prov_activo = "gemini"
 
         c_prov = self._card(lay, "PROVEEDOR PARA TAREAS DELEGADAS")
@@ -3041,9 +3046,9 @@ class FoxConfigOverlay(_HudOverlay):
             "QComboBox QAbstractItemView { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; }"
         )
         self._prov_keys: list[str] = []
-        for pid, pinfo in desde.PROVIDERS.items():
-            self._prov_combo.addItem(pinfo["name"], pid)
-            self._prov_keys.append(pid)
+        for pinfo in all_provs:
+            self._prov_combo.addItem(pinfo["name"], pinfo["id"])
+            self._prov_keys.append(pinfo["id"])
         idx = self._prov_combo.findData(prov_activo)
         if idx < 0: idx = 0
         self._prov_combo.setCurrentIndex(idx)
@@ -3102,11 +3107,16 @@ class FoxConfigOverlay(_HudOverlay):
 
     def _refresh_specialist_models(self, prov: str, current: str):
         self._spec_model_combo.clear()
+        modelos = []
         try:
-            desde = _import_specialist_llm()
-            modelos = desde.PROVIDERS.get(prov, {}).get("models", [])
+            from core import providers
+            all_provs = providers.list_providers()
+            for p in all_provs:
+                if p["id"] == prov:
+                    modelos = p.get("models", [])
+                    break
         except Exception:
-            modelos = []
+            pass
         for m in modelos:
             self._spec_model_combo.addItem(m, m)
         if current:

@@ -448,17 +448,14 @@ Optimized code:"""
 
 
 def _screen_debug_action(description, file_path, player, speak=None) -> str:
-
     if player:
         player.write_log("[Code] Taking screenshot for analysis...")
 
     print("[Code] 📸 Capturing screen for debug...")
 
-
     screenshot_path = _take_screenshot()
     if not screenshot_path:
         return "Could not take screenshot, sir. Please make sure PyAutoGUI is installed."
-
 
     file_content = ""
     if file_path:
@@ -467,19 +464,19 @@ def _screen_debug_action(description, file_path, player, speak=None) -> str:
             print(f"[Code] ⚠️ Could not read file: {err}")
 
     try:
-        from google import genai
-        from google.genai import types
+        from core.providers import chat
+        import json
+        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        prov = (cfg.get("specialist_provider") or "gemini").lower()
+        mod = (cfg.get("specialist_model") or GEMINI_MODEL).strip()
 
-        client = genai.Client(api_key=_get_api_key())
-
-        image_bytes  = screenshot_path.read_bytes()
         image_base64 = _image_to_base64(screenshot_path)
-
         user_question = description or "What error or problem do you see on the screen? How can it be fixed?"
 
         context = ""
         if file_content:
-            context = f"\n\nAdditionally, here is the related file content:\n```\n{file_content[:4000]}\n```"
+            context = f"\\n\\nAdditionally, here is the related file content:\\n```\\n{file_content[:4000]}\\n```"
 
         analysis_prompt = f"""You are an expert programmer and debugger analyzing a screenshot.
 
@@ -493,18 +490,20 @@ Please:
 
 Be specific and actionable. If you see an error message, quote it exactly."""
 
-        contents = [
-            types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-            analysis_prompt,
-        ]
+        msgs = [{"role": "user", "content": [
+            {"type": "text", "text": analysis_prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_base64}"}}
+        ]}]
 
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
+        res = chat(
+            messages=msgs,
+            provider=prov,
+            model=mod,
+            timeout=120
         )
-
-        analysis = response.text.strip()
-        print(f"[Code] ✅ Screen analysis complete")
+        analysis = res["content"].strip()
+        
+        print(f"[Code] ✓ Screen analysis complete")
 
         try:
             screenshot_path.unlink()
@@ -512,19 +511,17 @@ Be specific and actionable. If you see an error message, quote it exactly."""
             pass
 
         if file_path and file_content:
-
-            code_match = re.search(r"```[a-zA-Z]*\n(.*?)```", analysis, re.DOTALL)
+            code_match = re.search(r"```[a-zA-Z]*\\n(.*?)```", analysis, re.DOTALL)
             if code_match:
                 fixed_code = code_match.group(1).strip()
                 save_path  = Path(file_path)
                 _save_file(save_path, fixed_code)
-                analysis += f"\n\n✅ Fixed code has been saved to: {file_path}"
-                print(f"[Code] ✅ Fixed code saved: {file_path}")
+                analysis += f"\\n\\n✓ Fixed code has been saved to: {file_path}"
+                print(f"[Code] ✓ Fixed code saved: {file_path}")
 
         return analysis
 
     except Exception as e:
-
         try:
             screenshot_path.unlink()
         except Exception:

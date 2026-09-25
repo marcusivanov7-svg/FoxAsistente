@@ -27,19 +27,47 @@ def _get_api_key() -> str:
 
 
 def _get_model(model_name: str):
-    from google import genai
-    _c = genai.Client(api_key=_get_api_key())
+    from core.providers import chat
+    import json
+    import time
+    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    prov = (cfg.get("specialist_provider") or "gemini").lower()
+    mod = (cfg.get("specialist_model") or model_name).strip()
+
+    class _Response:
+        def __init__(self, t):
+            self.text = t
 
     class _W:
         def generate_content(self, contents):
             last_exc = None
             for _ in range(3):
                 try:
-                    return _c.models.generate_content(model=model_name, contents=contents)
+                    text_content = ""
+                    if isinstance(contents, list):
+                        for part in contents:
+                            if isinstance(part, str):
+                                text_content += part + "
+"
+                            elif hasattr(part, "text"):
+                                text_content += getattr(part, "text", "") + "
+"
+                    else:
+                        text_content = str(contents)
+
+                    msgs = [{"role": "user", "content": text_content.strip()}]
+                    res = chat(
+                        messages=msgs,
+                        provider=prov,
+                        model=mod,
+                        timeout=120
+                    )
+                    return _Response(res["content"])
                 except Exception as exc:
                     last_exc = exc
                     msg = str(exc).lower()
-                    if "503" in msg or "429" in msg or "unavailable" in msg or "resource_exhausted" in msg:
+                    if "503" in msg or "429" in msg or "unavailable" in msg or "resource_exhausted" in msg or "timeout" in msg:
                         print(f"[DevAgent] Error temporal ({msg[:80]}...)  reintentando...")
                         time.sleep(2)
                         continue
