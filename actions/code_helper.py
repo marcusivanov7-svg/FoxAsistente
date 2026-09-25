@@ -510,7 +510,7 @@ def _screen_debug_action(description, file_path, player, speak=None) -> str:
 
         context = ""
         if file_content:
-            context = f"\\n\\nAdditionally, here is the related file content:\\n```\\n{file_content[:4000]}\\n```"
+            context = f"\n\nAdditionally, here is the related file content:\n```\n{file_content[:4000]}\n```"
 
         analysis_prompt = f"""You are an expert programmer and debugger analyzing a screenshot.
 
@@ -545,12 +545,12 @@ Be specific and actionable. If you see an error message, quote it exactly."""
             pass
 
         if file_path and file_content:
-            code_match = re.search(r"```[a-zA-Z]*\\n(.*?)```", analysis, re.DOTALL)
+            code_match = re.search(r"```[a-zA-Z]*\n(.*?)```", analysis, re.DOTALL)
             if code_match:
                 fixed_code = code_match.group(1).strip()
                 save_path  = Path(file_path)
                 _save_file(save_path, fixed_code)
-                analysis += f"\\n\\n✓ Fixed code has been saved to: {file_path}"
+                analysis += f"\n\n✓ Fixed code has been saved to: {file_path}"
                 print(f"[Code] ✓ Fixed code saved: {file_path}")
 
         return analysis
