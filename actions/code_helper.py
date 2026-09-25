@@ -307,18 +307,27 @@ def _write_action(description, language, output_path, player) -> str:
         return f"Could not generate code: {e}"
 
 
-def _edit_action(file_path, instruction, player) -> str:
+def _edit_action(file_path, instruction, old_text, new_text, player) -> str:
     if not file_path:
         return "Please provide a file path to edit, sir."
-    if not instruction:
-        return "Please describe what change to make, sir."
 
     content, err = _read_file(file_path)
     if err:
         return err
 
+    if old_text and old_text in content:
+        if player:
+            player.write_log("[Code] Applying deterministic edit...")
+        edited = content.replace(old_text, new_text)
+        status = _save_file(Path(file_path), edited)
+        print(f"[Code] ✓ Edited (deterministic): {file_path}")
+        return f"File edited deterministically. {status}\n\nPreview:\n{_preview(edited)}"
+
+    if not instruction:
+        return "Please describe what change to make, or provide old_text/new_text, sir."
+
     if player:
-        player.write_log("[Code] Editing file...")
+        player.write_log("[Code] Editing file via LLM...")
 
     model  = _get_gemini()
     prompt = f"""You are an expert code editor.
@@ -547,6 +556,8 @@ def code_helper(
     action      = p.get("action", "auto").lower().strip()
     description = p.get("description", "").strip()
     language    = p.get("language", "python").strip()
+    old_text    = p.get("old_text", "")
+    new_text    = p.get("new_text", "")
     output_path = p.get("output_path", "").strip()
     file_path   = p.get("file_path", "").strip()
     code        = p.get("code", "").strip()
@@ -564,6 +575,8 @@ def code_helper(
         return _edit_action(
             file_path,
             description or p.get("instruction", ""),
+            old_text,
+            new_text,
             player
         )
 
@@ -597,6 +610,10 @@ TOOL = {
                                              'description': 'What the code should '
                                                             'do or what change to '
                                                             'make'},
+                          'old_text': {   'type': 'STRING',
+                                          'description': 'For deterministic edits, the exact old string to replace'},
+                          'new_text': {   'type': 'STRING',
+                                          'description': 'For deterministic edits, the exact new string to insert'},
                           'language': {   'type': 'STRING',
                                           'description': 'Programming language '
                                                          '(default: python)'},

@@ -14,6 +14,7 @@ DEFAULT_TIMEOUTS = {
     "fetch_url": 25,
     "python_repl": 30,
     "get_weather": 10,
+    "code_helper": 240,
     # Por defecto, cualquier otra herramienta tendrá 20s
     "default": 20
 }

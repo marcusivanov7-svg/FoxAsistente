@@ -47,6 +47,40 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 
+import re as _re
+
+
+def _parse_xml_tool_calls(text: str) -> list[dict]:
+    """Convierte tool calls en XML (<function_calls><invoke name=...>) al formato
+    wire. Fallback para proveedores sin function calling nativo."""
+    if not text or 'invoke' not in text:
+        return []
+    calls = []
+    for m in _re.finditer(r'<(?:[\w-]+:)?invoke\s+name=["\']([\w.-]+)["\'](.*?)</(?:[\w-]+:)?invoke>', text, _re.S):
+        name = m.group(1)
+        body = m.group(2)
+        args = {}
+        for pm in _re.finditer(r'<(?:[\w-]+:)?parameter\s+name=["\']([\w.-]+)["\'](.*?)</(?:[\w-]+:)?parameter>', body, _re.S):
+            val = pm.group(2).strip()
+            try:
+                import json
+                val = json.loads(val)
+            except Exception:
+                pass
+            args[pm.group(1)] = val
+        import json
+        calls.append({
+            "id": f"xml-{len(calls)}",
+            "type": "function",
+            "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
+        })
+    return calls
+
+
+def _strip_xml_tool_calls(text: str) -> str:
+    return _re.sub(r'<(?:[\w-]+:)?function_calls>.*?</(?:[\w-]+:)?function_calls>', '', text, flags=_re.S).strip()
+
+
 def _wire_tool_calls(tool_calls: list[dict]) -> list[dict]:
     """Respuesta del proveedor → formato wire de mensaje assistant (arguments como JSON string)."""
     out = []
@@ -311,8 +345,14 @@ class AgentEngine:
                     yield {"type": "error", "error": error_msg}
                     return
 
+            # ── Fallback: tool calls en XML (proveedores sin function calling) ──
+            if not tool_calls and content:
+                xml_calls = _parse_xml_tool_calls(content)
+                if xml_calls:
+                    tool_calls = xml_calls
+                    content = _strip_xml_tool_calls(content)
             if not tool_calls:
-                final_content = content.strip()
+                final_content = content.strip() if content else ""
                 self.history.append({"role": "assistant", "content": final_content})
                 break
 

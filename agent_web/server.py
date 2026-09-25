@@ -276,6 +276,8 @@ class AgentWebServer:
                             "type": "history",
                             "session_id": sid,
                             "messages": history,
+                            "traj": self._store.get_traj(sid),
+                            "folders": self._store.get_session_folders(sid),
                         })
                         continue
 
@@ -376,10 +378,11 @@ class AgentWebServer:
                     text = (req.get("text") or "").strip()
                     if not text:
                         continue
+
                     ws_name = req.get("workspace", "default")
                     req_folders = req.get("folders") or []
-
                     req_sid = req.get("session_id")
+
                     if req_sid is None:
                         sid = self._store.create_session(workspace_name=ws_name)
                         self.agent.clear_history()
@@ -409,13 +412,11 @@ class AgentWebServer:
                                 "workspaces": self._store.list_workspaces(),
                             })
                         except WebSocketDisconnect:
-                            print("[WS] Cliente desconectado antes de confirmar sesión nueva")
                             return
 
                     provider = req.get("provider") or None
                     model = req.get("model") or None
                     effort = req.get("effort") or "off"
-
                     api_keys = req.get("api_keys")
                     if api_keys:
                         for provider_id, key_val in api_keys.items():
@@ -441,15 +442,9 @@ class AgentWebServer:
                                 return
                             continue
                         self._pending_plan = {
-                            "task": text,
-                            "plan": plan,
-                            "session_id": sid,
-                            "workspace": ws_name,
-                            "provider": provider,
-                            "model": model,
-                            "effort": effort,
-                            "sandbox": req.get("sandbox") or "full",
-                            "folders": folders,
+                            "task": text, "plan": plan, "session_id": sid, "workspace": ws_name,
+                            "provider": provider, "model": model, "effort": effort,
+                            "sandbox": req.get("sandbox") or "full", "folders": folders,
                         }
                         try:
                             await safe_send({"type": "plan", "plan": plan, "session_id": sid})
@@ -457,12 +452,28 @@ class AgentWebServer:
                             return
                         continue
 
+                    # ── Registro de trayectoria persistida ──────────────────
+                    traj: list[dict] = []
+                    _thinkbuf: list[str] = []
+
+                    def _traj(k, x, r=None, err=False):
+                        traj.append({
+                            "t": round(time.time(), 1),
+                            "k": k,
+                            "x": (x or "")[:600],
+                            "r": (r or "")[:400] if r is not None else None,
+                            "err": bool(err)
+                        })
+
+                    if not self._store.get_traj(sid):
+                        _traj("SYSTEM", "Initial System Prompt")
+                    _traj("USER", text)
+
                     ctx_lines = []
                     if folders:
                         paths = ", ".join(folders)
                         ctx_lines.append(f"\n[INFO DE ENTORNO] El usuario te ha dado acceso de lectura/escritura a estas carpetas: {paths}.")
                         ctx_lines.append("Usa tus herramientas (list_dir, view_file, grep_search, find_by_name) para inspeccionarlas. Asume que el usuario se refiere a estos directorios si habla de 'el proyecto' o 'esta carpeta'.")
-
                     extra_context = "\n".join(ctx_lines)
 
                     if self._lock.locked():
@@ -475,29 +486,53 @@ class AgentWebServer:
                             return
                         continue
 
-                    # ── Ejecutar el agente con manejo robusto de desconexión ──
                     agent_completed = False
                     try:
                         async with self._lock:
                             async for ev in self.agent.run(
                                 text,
-                                provider=provider,
-                                model=model,
-                                effort=effort,
+                                provider=provider, model=model, effort=effort,
                                 extra_context=extra_context,
                             ):
+                                _et = ev.get("type")
+                                if _et == "thinking":
+                                    _thinkbuf.append(ev.get("text", ""))
+                                elif _et in ("tool_start", "delta", "done"):
+                                    if _thinkbuf:
+                                        _traj("THINK", "".join(_thinkbuf))
+                                        _thinkbuf.clear()
+                                    if _et == "tool_start":
+                                        _a = ev.get("arguments") or {}
+                                        if not isinstance(_a, str):
+                                            _a = json.dumps(_a, ensure_ascii=False)
+                                        _traj("TOOL", f"{ev.get('name', 'tool')} {str(_a)[:120]}")
+                                    elif _et == "done":
+                                        _traj("ASSISTANT", ev.get("content") or "")
+                                elif _et == "tool_result":
+                                    _res = str(ev.get("result") or "")
+                                    _err = _res.strip().lower().startswith(("error", "no pude", "failed", "access denied", "excedió", "cancelada", "no disponible", "timed out"))
+                                    updated = False
+                                    for _e in reversed(traj):
+                                        if _e["k"] == "TOOL" and not _e.get("r"):
+                                            _e["r"] = _res[:400]
+                                            _e["err"] = _err
+                                            updated = True
+                                            break
+                                    if not updated:
+                                        _traj("TOOL", ev.get("name", "tool"), r=_res, err=_err)
                                 await safe_send(ev)
-                        agent_completed = True
+                            agent_completed = True
                     except WebSocketDisconnect:
                         print(f"[WS] Cliente desconectado durante turno de agente (sid={sid})")
-                        # Guardar historial parcial igual para no perder lo que se generó
                         if self.agent.history:
                             try:
                                 self._store.save_session(sid, ws_name, self.agent.history, title_from_history(self.agent.history))
+                                self._store.append_traj(sid, traj)
                             except Exception as e:
                                 print(f"[WS] No se pudo guardar sesión parcial: {e}")
                         return
                     except Exception as e:
+                        import traceback
                         traceback.print_exc()
                         try:
                             await safe_send({"type": "error", "error": f"Error del agente: {str(e)}"})
@@ -506,6 +541,7 @@ class AgentWebServer:
 
                     if agent_completed:
                         self._store.save_session(sid, ws_name, self.agent.history, title_from_history(self.agent.history))
+                        self._store.append_traj(sid, traj)
                         try:
                             await safe_send({
                                 "type": "session_saved",
@@ -514,7 +550,6 @@ class AgentWebServer:
                                 "workspaces": self._store.list_workspaces(),
                             })
                         except WebSocketDisconnect:
-                            print(f"[WS] Cliente desconectado antes de confirmar session_saved (sid={sid})")
                             return
 
             except WebSocketDisconnect:

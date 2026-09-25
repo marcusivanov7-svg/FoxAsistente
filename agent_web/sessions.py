@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """agent_web/sessions.py — Persistencia de sesiones del agente.
-
 Guarda el historial de cada conversación en un JSON separado por workspace
 (directorio) para que sobrevivan al reinicio y organicen el árbol lateral.
 Si un workspace se queda sin chats, su carpeta se elimina para no acumular.
+Incluye persistencia de trayectoria (traj) estilo DeepSeek.
 """
 from __future__ import annotations
-
 import json
 import time
 import uuid
 import shutil
 from pathlib import Path
 from typing import Any
+
 
 class WorkspaceStore:
     def __init__(self, base_dir: Path | str) -> None:
@@ -33,7 +33,6 @@ class WorkspaceStore:
                         meta = json.loads(meta_file.read_text(encoding="utf-8"))
                     except Exception:
                         pass
-
                 for sess_file in ws_path.glob("*.json"):
                     if sess_file.name == "workspace.json":
                         continue
@@ -49,14 +48,13 @@ class WorkspaceStore:
                         pass
                 sessions.sort(key=lambda x: x["updated_at"], reverse=True)
                 if not sessions:
-                    continue  # workspace sin chats → no se lista (evita carpetas fantasma)
+                    continue  # workspace sin chats → no se lista
                 workspaces.append({
                     "id": ws_path.name,
                     "name": ws_path.name,
                     "sessions": sessions,
                     "folders": meta.get("folders", [])
                 })
-
         if not workspaces:
             default_ws = self.base_dir / "default"
             default_ws.mkdir(parents=True, exist_ok=True)
@@ -66,27 +64,61 @@ class WorkspaceStore:
                 "sessions": [],
                 "folders": []
             })
-
         workspaces.sort(key=lambda x: x["name"])
         return workspaces
 
     def set_workspace_folders(self, workspace_name: str, folders: list[str]) -> None:
-        """Guarda las rutas absolutas asociadas a un workspace."""
         if not workspace_name:
             return
         ws_path = self.base_dir / workspace_name
         ws_path.mkdir(parents=True, exist_ok=True)
         meta_file = ws_path / "workspace.json"
-
         meta = {}
         if meta_file.exists():
             try:
                 meta = json.loads(meta_file.read_text(encoding="utf-8"))
             except Exception:
                 pass
-
         meta["folders"] = folders
         meta_file.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _get_session_path(self, sid: str, workspace_name: str = None) -> Path | None:
+        if workspace_name:
+            p = self.base_dir / workspace_name / f"{sid}.json"
+            if p.exists(): return p
+        for ws_path in self.base_dir.iterdir():
+            if ws_path.is_dir():
+                p = ws_path / f"{sid}.json"
+                if p.exists(): return p
+        return None
+
+    # ── NUEVO: persistencia de trayectoria ─────────────────────────
+    def append_traj(self, sid: str, entries: list[dict]) -> None:
+        """Acumula entradas de trayectoria persistidas en el JSON de la sesión."""
+        if not entries:
+            return
+        path = self._get_session_path(sid)
+        if not path:
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        traj = data.get("traj") or []
+        traj.extend(entries)
+        data["traj"] = traj
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def get_traj(self, sid: str) -> list[dict]:
+        path = self._get_session_path(sid)
+        if not path:
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data.get("traj") or []
+        except Exception:
+            return []
+    # ── fin trayectoria ────────────────────────────────────────────
 
     def set_session_folders(self, sid: str, folders: list[str]) -> None:
         """Guarda las carpetas accesibles SOLO para este chat."""
@@ -110,23 +142,12 @@ class WorkspaceStore:
         except Exception:
             return []
 
-    def _get_session_path(self, sid: str, workspace_name: str = None) -> Path | None:
-        if workspace_name:
-            p = self.base_dir / workspace_name / f"{sid}.json"
-            if p.exists(): return p
-        for ws_path in self.base_dir.iterdir():
-            if ws_path.is_dir():
-                p = ws_path / f"{sid}.json"
-                if p.exists(): return p
-        return None
-
     def create_session(self, workspace_name: str, history: list[dict] = None, title: str = "Nueva conversación", mode: str = "Standard mode") -> str:
         sid = uuid.uuid4().hex[:12]
         now = time.time()
         workspace_name = workspace_name or "default"
         ws_path = self.base_dir / workspace_name
         ws_path.mkdir(parents=True, exist_ok=True)
-
         sess_file = ws_path / f"{sid}.json"
         data = {
             "id": sid,
@@ -134,7 +155,8 @@ class WorkspaceStore:
             "mode": mode,
             "created_at": now,
             "updated_at": now,
-            "history": list(history or [])
+            "history": list(history or []),
+            "traj": []
         }
         sess_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         self.active_session = sid
@@ -153,25 +175,24 @@ class WorkspaceStore:
                 "mode": mode or "Standard mode",
                 "created_at": time.time(),
                 "updated_at": time.time(),
-                "history": list(history or [])
+                "history": list(history or []),
+                "traj": []
             }
         else:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
-                data = {"id": sid, "created_at": time.time(), "history": []}
-
+                data = {"id": sid, "created_at": time.time(), "history": [], "traj": []}
             data["history"] = list(history or [])
             data["updated_at"] = time.time()
             if title: data["title"] = title
             if mode: data["mode"] = mode
-
+            if "traj" not in data: data["traj"] = []
             if path.parent.name != workspace_name:
                 new_path = self.base_dir / workspace_name / f"{sid}.json"
                 new_path.parent.mkdir(parents=True, exist_ok=True)
                 path.unlink(missing_ok=True)
                 path = new_path
-
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         self.active_session = sid
         self.active_workspace = workspace_name
@@ -200,15 +221,15 @@ class WorkspaceStore:
         if self.active_session == sid:
             self.active_session = None
 
+
 def title_from_history(history: list[dict]) -> str:
-    """Deriva un título corto a partir del primer mensaje del usuario."""
     for m in history or []:
         if m.get("role") == "user":
             t = str(m.get("content", "")).strip().replace("\n", " ")
             return (t[:40] + "…") if len(t) > 40 else (t or "Conversación")
     return "Conversación"
 
+
 def default_store() -> WorkspaceStore:
-    """Devuelve el store por defecto."""
     base = Path(__file__).resolve().parent.parent
     return WorkspaceStore(base / "memory" / "workspaces")
