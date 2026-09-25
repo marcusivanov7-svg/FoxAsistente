@@ -48,11 +48,9 @@ def _get_model(model_name: str):
                     if isinstance(contents, list):
                         for part in contents:
                             if isinstance(part, str):
-                                text_content += part + "
-"
+                                text_content += part + "\\n"
                             elif hasattr(part, "text"):
-                                text_content += getattr(part, "text", "") + "
-"
+                                text_content += getattr(part, "text", "") + "\\n"
                     else:
                         text_content = str(contents)
 
