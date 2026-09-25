@@ -25,13 +25,47 @@ def _get_api_key() -> str:
         return json.load(f)["gemini_api_key"]
 
 
-def _get_gemini(model: str = GEMINI_MODEL):
+def _delegate_text(prompt: str) -> str:
+    try:
+        from core import providers
+        import json
+        from pathlib import Path
+        
+        cfg_path = Path(__file__).resolve().parent.parent / 'config' / 'api_keys.json'
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+            
+        pid = (cfg.get("specialist_provider") or "gemini").lower()
+        mid = (cfg.get("specialist_model") or "").strip()
+        
+        if pid:
+            res = providers.chat(
+                [{"role": "user", "content": prompt}],
+                None,
+                provider=pid, model=mid, effort="off", timeout=180,
+            )
+            txt = (res or {}).get("content") or ""
+            if txt.strip():
+                return txt
+            print(f"[Code] {pid} devolvió respuesta vacía → fallback Gemini")
+    except Exception as e:
+        print(f"[Code] proveedor activo falló ({e}) → fallback Gemini")
+
     from google import genai
     _c = genai.Client(api_key=_get_api_key())
+    return _c.models.generate_content(model=GEMINI_MODEL, contents=prompt).text
 
+
+class _Resp:
+    def __init__(self, text: str):
+        self.text = text
+
+
+def _get_gemini(model: str = GEMINI_MODEL):
     class _W:
         def generate_content(self, contents):
-            return _c.models.generate_content(model=model, contents=contents)
+            prompt = contents if isinstance(contents, str) else str(contents)
+            return _Resp(_delegate_text(prompt))
 
     return _W()
 
