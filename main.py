@@ -1651,7 +1651,7 @@ class FoxLive:
         DeepSeek, Groq, etc.) y un loop manual de hasta 5 pasos.
         Devuelve el texto final que Fox leerá en voz alta.
         """
-        from core import specialist_llm
+        from core.providers import call_specialist_llm
 
         if self._specialist_lock is None:
             self._specialist_lock = asyncio.Lock()
@@ -1672,7 +1672,7 @@ class FoxLive:
                     called_tools: set[str] = set()
                     for _step in range(5):
                         resp = await asyncio.to_thread(
-                            specialist_llm.call_specialist_llm,
+                            call_specialist_llm,
                             messages=messages,
                             tools=self._specialist_tool_declarations,
                         )

@@ -35,15 +35,7 @@ from PyQt6.QtWidgets import (
 
 from ui_agent_chat import ChatPanel
 
-def _import_specialist_llm():
-    """Importa specialist_llm de forma segura, útil en contexto de módulo."""
-    try:
-        from core import specialist_llm
-        return specialist_llm
-    except Exception:
-        class _Fake:
-            PROVIDERS = {}
-        return _Fake()
+
 
 
 def _base_dir() -> Path:
